@@ -38,11 +38,16 @@ class Game {
         this.overheatCooldownRate = 20.0;
         this.score = 0;
         this.asteroidsDestroyed = 0;
+        this.isDead = false;
+        this.respawnTimer = 0;
 
         // СТРЕЛЬБА
         this.shootCooldown = 0.1;
         this.lastShootTime = 0;
         this.isOverheated = false;
+
+        // ВЗРЫВ
+        this.explosionParticles = [];
 
         this.initLobby();
     }
@@ -55,6 +60,11 @@ class Game {
         const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
         const backBtn = document.getElementById('backBtn');
         const errorMessage = document.getElementById('errorMessage');
+        const selectShipBtn = document.getElementById('selectShipBtn');
+
+        selectShipBtn.addEventListener('click', () => {
+            alert('🚀 Выбор кораблей будет доступен в следующем обновлении!');
+        });
 
         setTimeout(() => {
             const loader = new THREE.TextureLoader();
@@ -146,6 +156,8 @@ class Game {
         this.score = 0;
         this.asteroidsDestroyed = 0;
         this.isOverheated = false;
+        this.isDead = false;
+        this.respawnTimer = 0;
 
         this.init();
     }
@@ -196,6 +208,7 @@ class Game {
         document.getElementById('game-container').style.display = 'none';
         document.getElementById('backBtn').style.display = 'none';
         document.getElementById('hud').style.display = 'none';
+        document.getElementById('death-message').style.display = 'none';
         document.getElementById('refreshSessionsBtn').click();
     }
 
@@ -257,6 +270,47 @@ class Game {
                 );
             }
         };
+        
+        this.networkManager.onPlayerHpUpdate = (data) => {
+            const remote = this.remotePlayers.get(data.id);
+            if (remote) {
+                remote.hp = data.hp;
+                remote.maxHp = data.maxHp;
+            }
+        };
+        
+        this.networkManager.onPlayerDied = (data) => {
+            const remote = this.remotePlayers.get(data.id);
+            if (remote) {
+                remote.isDead = true;
+                this.createExplosion(remote.model.position);
+                remote.model.visible = false;
+                if (remote.label) remote.label.visible = false;
+            }
+            
+            if (data.id === this.networkManager.socket?.id) {
+                this.handleDeath(data.killerName);
+            }
+        };
+        
+        this.networkManager.onPlayerRespawn = (data) => {
+            const remote = this.remotePlayers.get(data.id);
+            if (remote) {
+                remote.isDead = false;
+                remote.model.position.copy(data.position);
+                remote.model.rotation.copy(data.rotation);
+                remote.model.visible = true;
+                if (remote.label) remote.label.visible = true;
+                remote.hp = data.hp;
+                remote.maxHp = data.maxHp;
+                remote.targetPosition = data.position;
+                remote.targetRotation = data.rotation;
+            }
+            
+            if (data.id === this.networkManager.socket?.id) {
+                this.handleRespawn(data.position, data.rotation);
+            }
+        };
 
         this.networkManager.connect(this.sessionId, this.playerName, 0);
 
@@ -294,6 +348,122 @@ class Game {
         this.animate();
     }
 
+    // ========== ЭФФЕКТ ВЗРЫВА ==========
+    createExplosion(position) {
+        const particleCount = 50;
+        const color = 0xff6600;
+        
+        for (let i = 0; i < particleCount; i++) {
+            const geometry = new THREE.SphereGeometry(0.1 + Math.random() * 0.2, 4, 4);
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.5
+            });
+            const particle = new THREE.Mesh(geometry, material);
+            
+            particle.position.copy(position);
+            particle.position.x += (Math.random() - 0.5) * 0.5;
+            particle.position.y += (Math.random() - 0.5) * 0.5;
+            particle.position.z += (Math.random() - 0.5) * 0.5;
+            
+            const speed = 2 + Math.random() * 3;
+            particle.userData.velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * speed,
+                (Math.random() - 0.5) * speed,
+                (Math.random() - 0.5) * speed
+            );
+            particle.userData.life = 1.0;
+            particle.userData.decay = 0.5 + Math.random() * 0.5;
+            
+            this.sceneManager.getScene().add(particle);
+            this.explosionParticles.push(particle);
+        }
+    }
+
+    updateExplosions(deltaTime) {
+        for (let i = this.explosionParticles.length - 1; i >= 0; i--) {
+            const p = this.explosionParticles[i];
+            p.position.x += p.userData.velocity.x * deltaTime;
+            p.position.y += p.userData.velocity.y * deltaTime;
+            p.position.z += p.userData.velocity.z * deltaTime;
+            p.userData.velocity.multiplyScalar(0.98);
+            p.userData.life -= p.userData.decay * deltaTime;
+            p.scale.multiplyScalar(1 - deltaTime * 0.5);
+            
+            if (p.userData.life <= 0) {
+                this.sceneManager.getScene().remove(p);
+                p.geometry.dispose();
+                p.material.dispose();
+                this.explosionParticles.splice(i, 1);
+            }
+        }
+    }
+
+    // ========== СМЕРТЬ И ВОЗРОЖДЕНИЕ ==========
+    handleDeath(killerName) {
+        this.isDead = true;
+        this.hp = 0;
+        this.respawnTimer = 5;
+        
+        const deathMsg = document.getElementById('death-message');
+        deathMsg.style.display = 'block';
+        document.getElementById('killer-name').textContent = `💀 Вас убил: ${killerName || 'неизвестный'}`;
+        document.getElementById('respawn-timer').textContent = Math.ceil(this.respawnTimer);
+        
+        if (this.localShip) {
+            this.localShip.visible = false;
+            if (this.localShipNameLabel) this.localShipNameLabel.visible = false;
+        }
+        
+        // НЕ ОБНУЛЯЕМ КЛАВИШИ! Только блокируем управление через isDead
+        this.updateHUD();
+    }
+
+    handleRespawn(position, rotation) {
+        this.isDead = false;
+        this.hp = this.maxHp;
+        this.respawnTimer = 0;
+        
+        document.getElementById('death-message').style.display = 'none';
+        
+        if (this.localShip) {
+            // Принудительно устанавливаем позицию и поворот
+            this.localShip.position.copy(position);
+            this.localShip.rotation.set(rotation.x, rotation.y, rotation.z);
+            this.localShip.visible = true;
+            if (this.localShipNameLabel) this.localShipNameLabel.visible = true;
+            
+            // Принудительно обновляем камеру
+            if (this.cameraManager) {
+                this.cameraManager.update(this.localShip, 0.016);
+            }
+        }
+        
+        this.updateHUD();
+        console.log('♻️ Возрождение! Поворот доступен!');
+    }
+
+    // ========== ОБНОВЛЕНИЕ ТАЙМЕРА ВОЗРОЖДЕНИЯ ==========
+    updateRespawnTimer(deltaTime) {
+        if (!this.isDead) return;
+        
+        this.respawnTimer -= deltaTime;
+        if (this.respawnTimer < 0) this.respawnTimer = 0;
+        
+        const timerElement = document.getElementById('respawn-timer');
+        const displayValue = Math.ceil(this.respawnTimer);
+        timerElement.textContent = displayValue;
+        
+        if (displayValue <= 1) {
+            timerElement.style.color = '#00ff88';
+        } else if (displayValue <= 3) {
+            timerElement.style.color = '#ffcc00';
+        } else {
+            timerElement.style.color = '#ff3355';
+        }
+    }
+
     // ========== НИКНЕЙМ ==========
     createNameLabel(name) {
         const canvas = document.createElement('canvas');
@@ -329,22 +499,20 @@ class Game {
         return sprite;
     }
 
-    // ========== УПРАВЛЕНИЕ (ТОЛЬКО WASD + ПРОБЕЛ + SHIFT) ==========
+    // ========== УПРАВЛЕНИЕ (КЛАВИШИ ВСЕГДА ЗАПОМИНАЮТСЯ) ==========
     setupControls() {
+        // Клавиши запоминаются ВСЕГДА, даже если игрок мёртв
         window.addEventListener('keydown', (e) => {
-            // === WASD (по кодам, не по буквам) ===
             if (e.code === 'KeyW') this.keys.w = true;
             if (e.code === 'KeyA') this.keys.a = true;
             if (e.code === 'KeyS') this.keys.s = true;
             if (e.code === 'KeyD') this.keys.d = true;
             
-            // === Пробел — вверх ===
             if (e.code === 'Space') {
                 e.preventDefault();
                 this.keys.space = true;
             }
             
-            // === Левый Shift — вниз ===
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
                 e.preventDefault();
                 this.keys.shift = true;
@@ -371,7 +539,7 @@ class Game {
 
     // ========== СТРЕЛЬБА ==========
     shoot() {
-        if (!this.isGameActive || !this.localShip || !this.bulletPool) return;
+        if (!this.isGameActive || !this.localShip || !this.bulletPool || this.isDead) return;
         
         if (this.isOverheated) {
             console.log('🔥 Пушка перегрета!');
@@ -394,11 +562,15 @@ class Game {
         const direction = new THREE.Vector3(0, 0, 1);
         direction.applyQuaternion(this.localShip.quaternion);
         
-        this.bulletPool.shoot(
+        const bullet = this.bulletPool.shoot(
             this.localShip.position.clone(),
             direction,
             this.networkManager?.socket?.id || 'local'
         );
+        
+        if (bullet) {
+            bullet.ownerId = this.networkManager?.socket?.id || 'local';
+        }
         
         if (this.networkManager && this.networkManager.socket) {
             this.networkManager.sendShoot(this.localShip.position, direction);
@@ -435,10 +607,17 @@ class Game {
     }
 
     takeDamage(damage) {
+        if (this.isDead) return;
         this.hp = Math.max(0, this.hp - damage);
         this.updateHUD();
         if (this.hp <= 0) {
             console.log('💀 Корабль уничтожен!');
+            if (this.networkManager && this.networkManager.socket) {
+                this.networkManager.socket.emit('playerDied', {
+                    id: this.networkManager.socket.id,
+                    killerId: 'unknown'
+                });
+            }
         }
     }
 
@@ -452,10 +631,14 @@ class Game {
         const checkInterval = setInterval(() => {
             if (remoteLoader.model) {
                 clearInterval(checkInterval);
+                
+                const isDead = playerData.isDead || false;
                 remoteLoader.model.position.copy(playerData.position);
                 remoteLoader.model.rotation.copy(playerData.rotation);
+                remoteLoader.model.visible = !isDead;
 
                 const label = this.createNameLabel(playerData.name || 'Player');
+                label.visible = !isDead;
                 remoteLoader.model.add(label);
 
                 this.remotePlayers.set(playerData.id, {
@@ -463,7 +646,10 @@ class Game {
                     label: label,
                     targetPosition: playerData.position,
                     targetRotation: playerData.rotation,
-                    name: playerData.name || 'Player'
+                    name: playerData.name || 'Player',
+                    hp: playerData.hp || 100,
+                    maxHp: playerData.maxHp || 100,
+                    isDead: isDead
                 });
             }
         }, 50);
@@ -471,43 +657,80 @@ class Game {
 
     // ========== ОБНОВЛЕНИЕ КОРАБЛЯ ==========
     updateLocalShip(deltaTime) {
+        this.updateRespawnTimer(deltaTime);
+        
         if (!this.localShip) return;
+        
+        // ===== ДВИЖЕНИЕ (ТОЛЬКО ЕСЛИ ЖИВ) =====
+        if (!this.isDead) {
+            const moveSpeed = 5;
+            const rotSpeed = 2;
+            const verticalSpeed = 3;
 
-        const moveSpeed = 5;
-        const rotSpeed = 2;
-        const verticalSpeed = 3;
+            // ПОВОРОТ (A/D) — теперь точно работает
+            if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
+            if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
 
-        // ===== ПОВОРОТ =====
-        if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
-        if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
+            // ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S)
+            if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
+            if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
 
-        // ===== ДВИЖЕНИЕ ВПЕРЁД/НАЗАД =====
-        if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
-        if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
+            // ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT)
+            if (this.keys.space) {
+                this.localShip.position.y += verticalSpeed * deltaTime;
+            }
+            if (this.keys.shift) {
+                this.localShip.position.y -= verticalSpeed * deltaTime;
+            }
 
-        // ===== ДВИЖЕНИЕ ВВЕРХ/ВНИЗ =====
-        if (this.keys.space) {
-            this.localShip.position.y += verticalSpeed * deltaTime;
+            if (this.networkManager) {
+                this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
+            }
+
+            if (this.cameraManager) {
+                this.cameraManager.update(this.localShip, deltaTime);
+            }
+        } else {
+            // Если мёртв — просто обновляем камеру (чтобы она не слетала)
+            if (this.cameraManager && this.localShip) {
+                this.cameraManager.update(this.localShip, deltaTime);
+            }
         }
-        if (this.keys.shift) {
-            this.localShip.position.y -= verticalSpeed * deltaTime;
-        }
 
-        if (this.networkManager) {
-            this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
-        }
-
-        if (this.cameraManager) {
-            this.cameraManager.update(this.localShip, deltaTime);
-        }
-
+        // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА (РАБОТАЕТ ВСЕГДА) =====
         if (this.overheat > 0) {
             this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
-            
             if (this.overheat <= 0 && this.isOverheated) {
                 this.isOverheated = false;
                 this.overheat = 0;
                 console.log('✅ Пушка остыла!');
+            }
+        }
+
+        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ (РАБОТАЕТ ВСЕГДА) =====
+        if (this.bulletPool && this.networkManager) {
+            const activeBullets = this.bulletPool.getActiveBullets();
+            
+            for (let i = activeBullets.length - 1; i >= 0; i--) {
+                const bullet = activeBullets[i];
+                const bulletPos = bullet.mesh.position;
+                const ownerId = bullet.ownerId;
+                
+                for (const [playerId, remote] of this.remotePlayers) {
+                    if (playerId === ownerId) continue;
+                    if (remote.isDead) continue;
+                    
+                    const dist = bulletPos.distanceTo(remote.model.position);
+                    if (dist < 2.5) {
+                        if (this.networkManager.socket) {
+                            this.networkManager.socket.emit('hitPlayer', playerId, 20);
+                            this.bulletPool.deactivateBullet(bullet);
+                            activeBullets.splice(i, 1);
+                            this.createExplosion(remote.model.position);
+                        }
+                        break;
+                    }
+                }
             }
         }
 
@@ -538,9 +761,10 @@ class Game {
         const delta = this.clock.getDelta();
 
         this.updateLocalShip(delta);
+        this.updateExplosions(delta);
 
         for (const [_, remote] of this.remotePlayers) {
-            if (remote.targetPosition && remote.model) {
+            if (remote.targetPosition && remote.model && !remote.isDead) {
                 remote.model.position.lerp(remote.targetPosition, 0.3);
                 if (remote.targetRotation) {
                     remote.model.rotation.x += (remote.targetRotation.x - remote.model.rotation.x) * 0.3;

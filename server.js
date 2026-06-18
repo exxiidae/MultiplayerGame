@@ -65,6 +65,9 @@ class PlayerData {
         this.position = { x: 0, y: 0, z: 0 };
         this.rotation = { x: 0, y: 0, z: 0 };
         this.sessionId = null;
+        this.hp = 100;
+        this.maxHp = 100;
+        this.isDead = false;
     }
 }
 
@@ -93,7 +96,10 @@ io.on('connection', (socket) => {
                 name: p.name,
                 currentModel: p.currentModel,
                 position: p.position,
-                rotation: p.rotation
+                rotation: p.rotation,
+                hp: p.hp,
+                maxHp: p.maxHp,
+                isDead: p.isDead || false
             }));
         
         socket.emit('init', otherPlayers);
@@ -102,7 +108,10 @@ io.on('connection', (socket) => {
             name: playerData.name,
             currentModel: playerData.currentModel,
             position: playerData.position,
-            rotation: playerData.rotation
+            rotation: playerData.rotation,
+            hp: playerData.hp,
+            maxHp: playerData.maxHp,
+            isDead: playerData.isDead
         });
         
         socket.join(sessionId);
@@ -126,9 +135,10 @@ io.on('connection', (socket) => {
         });
     });
     
+    // ===== ВЫСТРЕЛ =====
     socket.on('shoot', (data) => {
         const playerData = playerDataMap.get(socket.id);
-        if (!playerData) return;
+        if (!playerData || playerData.isDead) return;
         
         const sessionId = playerData.sessionId;
         if (!sessionId) return;
@@ -138,6 +148,59 @@ io.on('connection', (socket) => {
             direction: data.direction,
             ownerId: socket.id
         });
+    });
+    
+    // ===== ПОПАДАНИЕ В ИГРОКА =====
+    socket.on('hitPlayer', (targetId, damage) => {
+        const attacker = playerDataMap.get(socket.id);
+        if (!attacker || attacker.isDead) return;
+        
+        const target = playerDataMap.get(targetId);
+        if (!target || target.isDead) return;
+        
+        if (attacker.sessionId !== target.sessionId) return;
+        if (attacker.id === target.id) return;
+        
+        target.hp = Math.max(0, target.hp - damage);
+        
+        const sessionId = attacker.sessionId;
+        
+        // Уведомляем всех в сессии
+        io.to(sessionId).emit('playerHpUpdate', {
+            id: targetId,
+            hp: target.hp,
+            maxHp: target.maxHp
+        });
+        
+        console.log(`💥 ${attacker.name} нанёс ${damage} урона ${target.name}. HP: ${target.hp}`);
+        
+        if (target.hp <= 0) {
+            target.isDead = true;
+            io.to(sessionId).emit('playerDied', {
+                id: targetId,
+                killerId: socket.id,
+                killerName: attacker.name,
+                targetName: target.name
+            });
+            console.log(`💀 ${target.name} уничтожен ${attacker.name}!`);
+            
+            // Возрождаем через 3 секунды
+            setTimeout(() => {
+                target.hp = target.maxHp;
+                target.isDead = false;
+                target.position = { x: 0, y: 0, z: 0 };
+                target.rotation = { x: 0, y: 0, z: 0 };
+                
+                io.to(sessionId).emit('playerRespawn', {
+                    id: targetId,
+                    hp: target.hp,
+                    maxHp: target.maxHp,
+                    position: target.position,
+                    rotation: target.rotation
+                });
+                console.log(`♻️ ${target.name} возрождён`);
+            }, 5000);
+        }
     });
     
     socket.on('disconnect', () => {

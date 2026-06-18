@@ -11,6 +11,9 @@ export class NetworkManager {
         this.onPlayerMove = null;
         this.onPlayerLeave = null;
         this.onShoot = null;
+        this.onPlayerHpUpdate = null;
+        this.onPlayerDied = null;
+        this.onPlayerRespawn = null;
         this.position = null;
         this.rotation = null;
         this.isConnected = false;
@@ -47,6 +50,18 @@ export class NetworkManager {
         
         this.socket.on('shoot', (data) => {
             if (this.onShoot) this.onShoot(data);
+        });
+        
+        this.socket.on('playerHpUpdate', (data) => {
+            if (this.onPlayerHpUpdate) this.onPlayerHpUpdate(data);
+        });
+        
+        this.socket.on('playerDied', (data) => {
+            if (this.onPlayerDied) this.onPlayerDied(data);
+        });
+        
+        this.socket.on('playerRespawn', (data) => {
+            if (this.onPlayerRespawn) this.onPlayerRespawn(data);
         });
         
         this.socket.on('disconnect', () => {

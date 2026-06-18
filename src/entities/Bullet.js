@@ -1,83 +1,58 @@
 import * as THREE from 'three';
 
-export class BulletPool {
-    constructor(scene, poolSize = 50) {
+export class Bullet {
+    constructor(scene, position, direction, ownerId) {
         this.scene = scene;
-        this.pool = [];
-        this.activeBullets = [];
-        this.bulletSpeed = 30;
-        this.lifeTime = 3.0;
+        this.ownerId = ownerId;
+        this.speed = 30;
+        this.lifeTime = 3.0; // секунд до самоуничтожения
+        this.age = 0;
 
-        // ===== ОПТИМИЗАЦИЯ: ОБЩАЯ ГЕОМЕТРИЯ =====
-        const geometry = new THREE.SphereGeometry(0.15, 6, 6);
+        // Создаём геометрию пули (маленькая сфера)
+        const geometry = new THREE.SphereGeometry(0.15, 8, 8);
         const material = new THREE.MeshStandardMaterial({
             color: 0x00ccff,
             emissive: 0x0088ff,
             emissiveIntensity: 0.5
         });
-
-        for (let i = 0; i < poolSize; i++) {
-            const mesh = new THREE.Mesh(geometry, material.clone());
-            mesh.visible = false;
-            this.scene.add(mesh);
-            this.pool.push({
-                mesh: mesh,
-                direction: new THREE.Vector3(),
-                age: 0,
-                active: false,
-                ownerId: null
-            });
-        }
-    }
-
-    shoot(position, direction, ownerId) {
-        const bullet = this.pool.find(b => !b.active);
-        if (!bullet) {
-            console.warn('⚠️ Пул пуль исчерпан!');
-            return null;
-        }
-
-        bullet.mesh.position.copy(position);
-        bullet.direction.copy(direction).normalize();
-        bullet.age = 0;
-        bullet.active = true;
-        bullet.mesh.visible = true;
-        bullet.ownerId = ownerId;
-        this.activeBullets.push(bullet);
-        return bullet;
+        this.mesh = new THREE.Mesh(geometry, material);
+        
+        // Устанавливаем позицию и направление
+        this.mesh.position.copy(position);
+        this.direction = direction.clone().normalize();
+        
+        // Добавляем световой эффект (точка света)
+        const light = new THREE.PointLight(0x00ccff, 0.5, 5);
+        this.mesh.add(light);
+        
+        this.scene.add(this.mesh);
     }
 
     update(deltaTime) {
-        for (let i = this.activeBullets.length - 1; i >= 0; i--) {
-            const bullet = this.activeBullets[i];
-            bullet.age += deltaTime;
+        this.age += deltaTime;
+        
+        // Движение
+        this.mesh.position.x += this.direction.x * this.speed * deltaTime;
+        this.mesh.position.y += this.direction.y * this.speed * deltaTime;
+        this.mesh.position.z += this.direction.z * this.speed * deltaTime;
 
-            bullet.mesh.position.x += bullet.direction.x * this.bulletSpeed * deltaTime;
-            bullet.mesh.position.y += bullet.direction.y * this.bulletSpeed * deltaTime;
-            bullet.mesh.position.z += bullet.direction.z * this.bulletSpeed * deltaTime;
-
-            if (bullet.age > this.lifeTime) {
-                this.deactivateBullet(bullet);
-                this.activeBullets.splice(i, 1);
-            }
+        // Проверка на самоуничтожение
+        if (this.age > this.lifeTime) {
+            this.destroy();
+            return false;
         }
+
+        return true;
     }
 
-    deactivateBullet(bullet) {
-        bullet.active = false;
-        bullet.mesh.visible = false;
-        bullet.ownerId = null;
+    destroy() {
+        this.scene.remove(this.mesh);
+        // Очищаем ресурсы
+        if (this.mesh.geometry) this.mesh.geometry.dispose();
+        if (this.mesh.material) this.mesh.material.dispose();
     }
 
-    getActiveBullets() {
-        return this.activeBullets;
-    }
-
-    clear() {
-        for (const bullet of this.pool) {
-            this.scene.remove(bullet.mesh);
-        }
-        this.pool = [];
-        this.activeBullets = [];
+    getPosition() {
+        return this.mesh.position;
     }
 }
