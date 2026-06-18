@@ -89,4 +89,4 @@
 
 
     **ССЫЛКА НА РЕНДЕРКОМ**
-    https://dashboard.render.com/web/srv-d8q6m7f7f7vs73e0dts0
+   https://multiplayergame-lppu.onrender.com
