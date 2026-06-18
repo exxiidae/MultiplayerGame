@@ -10,6 +10,7 @@ export class NetworkManager {
         this.onPlayerJoin = null;
         this.onPlayerMove = null;
         this.onPlayerLeave = null;
+        this.onShoot = null;
         this.position = null;
         this.rotation = null;
         this.isConnected = false;
@@ -44,6 +45,10 @@ export class NetworkManager {
             if (this.onPlayerLeave) this.onPlayerLeave(id);
         });
         
+        this.socket.on('shoot', (data) => {
+            if (this.onShoot) this.onShoot(data);
+        });
+        
         this.socket.on('disconnect', () => {
             this.isConnected = false;
         });
@@ -59,6 +64,14 @@ export class NetworkManager {
         if (!this.isConnected || !this.socket || !this.socket.connected) return;
         this.position = { x: position.x, y: position.y, z: position.z };
         this.rotation = { x: rotation.x, y: rotation.y, z: rotation.z };
+    }
+    
+    sendShoot(position, direction) {
+        if (!this.isConnected || !this.socket || !this.socket.connected) return;
+        this.socket.emit('shoot', {
+            position: { x: position.x, y: position.y, z: position.z },
+            direction: { x: direction.x, y: direction.y, z: direction.z }
+        });
     }
     
     disconnect() {

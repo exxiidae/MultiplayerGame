@@ -8,93 +8,137 @@ export class AsteroidManager {
         this.ship_obj = ship_obj;
         this.asteroids = [];
         this.materialManager = new MaterialManager();
-        this.chunkLength = 100;
+        this.chunkLength = 150;
 
-        // ===== НОВЫЕ ПАРАМЕТРЫ =====
-        this.maxAsteroids = 30;          // максимум на карте
-        this.spawnInterval = 5000;       // 5 секунд между спавнами
-        this.spawnCountMin = 5;          // минимум астероидов за раз
-        this.spawnCountMax = 7;          // максимум астероидов за раз
-        this.asteroidSpeed = 0.02;       // скорость полёта (было 0.05)
-        this.asteroidRotSpeed = 0.002;   // скорость вращения (было 0.005)
+        this.maxAsteroids = 30;
+        this.spawnInterval = 30000;
+        this.spawnCountMin = 20;
+        this.spawnCountMax = 30;
+        this.asteroidSpeed = 0.004;
+        this.asteroidRotSpeed = 0.0004;
 
-        // Запускаем периодический спавн
+        // ===== ОПТИМИЗАЦИЯ: ОБЩАЯ ГЕОМЕТРИЯ =====
+        AsteroidManager.sharedGeometry = new THREE.SphereGeometry(1, 16, 16); // Меньше полигонов
+        AsteroidManager.sharedMaterial = null;
+
         this.startSpawning();
     }
 
-    // ===== ЗАПУСК ПЕРИОДИЧЕСКОГО СПАВНА =====
     startSpawning() {
-        // Первый спавн через 1 секунду
         setTimeout(() => {
             this.spawnAsteroids();
-        }, 1000);
+        }, 2000);
 
-        // Запускаем интервал
         this.spawnTimer = setInterval(() => {
             this.spawnAsteroids();
         }, this.spawnInterval);
     }
 
-    // ===== СПАВН ГРУППЫ АСТЕРОИДОВ =====
+    // ===== ОПТИМИЗАЦИЯ: СПАВН С РАЗБИВКОЙ ПО КАДРАМ =====
     spawnAsteroids() {
-        // Если на карте уже много астероидов — не спавним
-        if (this.asteroids.length >= this.maxAsteroids) return;
-
-        // Сколько астероидов спавнить сейчас (от 5 до 7)
         const count = Math.floor(Math.random() * (this.spawnCountMax - this.spawnCountMin + 1)) + this.spawnCountMin;
+        let spawned = 0;
 
-        for (let i = 0; i < count; i++) {
-            // Если превысили лимит — выходим
-            if (this.asteroids.length >= this.maxAsteroids) break;
+        const spawnBatch = () => {
+            const batchSize = 3; // по 3 астероида за кадр
+            for (let i = 0; i < batchSize && spawned < count; i++) {
+                const shipPosition = this.getPosition();
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 40 + Math.random() * 60;
+                const offsetX = Math.cos(angle) * distance;
+                const offsetZ = Math.sin(angle) * distance;
+                const offsetY = (Math.random() - 0.5) * 10;
 
-            const shipPosition = this.getPosition();
+                const asteroid = this.createAsteroid();
+                this.asteroids.push(asteroid);
+                asteroid.position.set(
+                    shipPosition.x + offsetX,
+                    shipPosition.y + offsetY,
+                    shipPosition.z + offsetZ
+                );
+                this.scene.add(asteroid);
+                spawned++;
+            }
 
-            // Случайное смещение в радиусе 30–80 единиц
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 30 + Math.random() * 50;
-            const offsetX = Math.cos(angle) * distance;
-            const offsetZ = Math.sin(angle) * distance;
-            const offsetY = (Math.random() - 0.5) * 8;
+            if (spawned < count) {
+                requestAnimationFrame(spawnBatch);
+            }
+        };
 
-            const asteroid = this.createAsteroid();
-            this.asteroids.push(asteroid);
-            asteroid.position.set(
-                shipPosition.x + offsetX,
-                shipPosition.y + offsetY,
-                shipPosition.z + offsetZ
-            );
-            this.scene.add(asteroid);
-        }
+        spawnBatch();
     }
 
-    // ===== ПОЛУЧИТЬ ПОЗИЦИЮ КОРАБЛЯ =====
     getPosition() {
         return this.ship ? this.ship.position : new THREE.Vector3(0, 0, 0);
     }
 
-    // ===== СОЗДАТЬ ОДИН АСТЕРОИД =====
+    // ===== ОПТИМИЗАЦИЯ: ПЕРЕИСПОЛЬЗОВАНИЕ ГЕОМЕТРИИ =====
+    getAsteroidMaterial() {
+        if (!AsteroidManager.sharedMaterial) {
+            const materialManager = new MaterialManager();
+            AsteroidManager.sharedMaterial = materialManager.createMaterial('cratered_rock');
+        }
+        return AsteroidManager.sharedMaterial.clone();
+    }
+
     createAsteroid() {
-        const geometry = new THREE.SphereGeometry(1, 24, 24);
-        const material = this.materialManager.createMaterial('cratered_rock');
+        const geometry = AsteroidManager.sharedGeometry;
+        const material = this.getAsteroidMaterial();
         const mesh = new THREE.Mesh(geometry, material);
         
-        // Случайный размер (от 0.8 до 1.5)
         const scale = 0.8 + Math.random() * 0.7;
         mesh.scale.set(scale, scale, scale);
-
-        // Случайный поворот
         mesh.rotation.x = Math.random() * Math.PI * 2;
         mesh.rotation.y = Math.random() * Math.PI * 2;
 
         return mesh;
     }
 
-    // ===== ОБНОВЛЕНИЕ КАЖДОГО КАДРА =====
+    checkBulletCollisions(bullets) {
+        let asteroidsDestroyed = 0;
+        
+        for (let i = this.asteroids.length - 1; i >= 0; i--) {
+            const asteroid = this.asteroids[i];
+            const asteroidPos = asteroid.position;
+            
+            for (let j = bullets.length - 1; j >= 0; j--) {
+                const bullet = bullets[j];
+                const bulletPos = bullet.mesh.position; // Для BulletPool
+                
+                const dist = asteroidPos.distanceTo(bulletPos);
+                const asteroidRadius = asteroid.scale.x * 0.8;
+                
+                if (dist < asteroidRadius + 0.3) {
+                    this.scene.remove(asteroid);
+                    this.asteroids.splice(i, 1);
+                    
+                    // Для BulletPool
+                    if (bullet.deactivate) {
+                        bullet.deactivate();
+                    } else {
+                        bullet.destroy();
+                    }
+                    bullets.splice(j, 1);
+                    
+                    asteroidsDestroyed++;
+                    
+                    if (window.game && window.game.isGameActive) {
+                        window.game.addScore(10);
+                        window.game.asteroidsDestroyed += 1;
+                    }
+                    
+                    break;
+                }
+            }
+        }
+        
+        return asteroidsDestroyed;
+    }
+
     updateAsteroids() {
         for (let i = this.asteroids.length - 1; i >= 0; i--) {
             const asteroid = this.asteroids[i];
 
-            // === ДВИЖЕНИЕ К КОРАБЛЮ (медленное) ===
             const direction = new THREE.Vector3()
                 .copy(this.ship.position)
                 .sub(asteroid.position)
@@ -104,12 +148,10 @@ export class AsteroidManager {
             asteroid.position.y += direction.y * this.asteroidSpeed * 0.3;
             asteroid.position.z += direction.z * this.asteroidSpeed;
 
-            // === ВРАЩЕНИЕ ===
             asteroid.rotation.x += this.asteroidRotSpeed;
             asteroid.rotation.y += this.asteroidRotSpeed * 0.7;
             asteroid.rotation.z += this.asteroidRotSpeed * 0.3;
 
-            // === УДАЛЕНИЕ, ЕСЛИ СЛИШКОМ ДАЛЕКО ===
             const distToShip = asteroid.position.distanceTo(this.ship.position);
             if (distToShip > this.chunkLength) {
                 this.scene.remove(asteroid);
@@ -117,12 +159,10 @@ export class AsteroidManager {
                 continue;
             }
 
-            // === СТОЛКНОВЕНИЕ С КОРАБЛЁМ ===
             if (distToShip < 4.5) {
                 this.ship_obj.hp -= 10;
                 console.log('💥 Урон! HP:', this.ship_obj.hp);
 
-                // Уведомляем HUD
                 if (window.game && window.game.isGameActive) {
                     window.game.takeDamage(10);
                 }
@@ -133,7 +173,6 @@ export class AsteroidManager {
         }
     }
 
-    // ===== ОСТАНОВКА СПАВНА (при выходе) =====
     stopSpawning() {
         if (this.spawnTimer) {
             clearInterval(this.spawnTimer);

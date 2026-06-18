@@ -7,7 +7,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const fastify = Fastify({ logger: false });
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 fastify.register(fastifyStatic, { root: __dirname });
 fastify.get('/', (_, reply) => reply.sendFile('index.html'));
@@ -46,11 +46,16 @@ setInterval(() => {
     }
 }, 30000);
 
-fastify.listen({ port, host: '0.0.0.0' }, () => {
-    console.log(`SERVER RUN: http://localhost:${port}`);
+const server = fastify.server;
+fastify.listen({ port, host: '0.0.0.0' }, (err) => {
+    if (err) {
+        console.error('❌ Ошибка запуска:', err);
+        process.exit(1);
+    }
+    console.log(`🚀 SERVER RUN: http://localhost:${port}`);
 });
 
-const io = new Server(fastify.server);
+const io = new Server(server);
 
 class PlayerData {
     constructor(socketId, playerName, currentModel) {
@@ -64,7 +69,11 @@ class PlayerData {
 }
 
 io.on('connection', (socket) => {
+    console.log('🔌 Игрок подключился:', socket.id);
+
     socket.on('join', (sessionId, playerName, currentModel) => {
+        console.log(`📥 Присоединение к сессии ${sessionId}, игрок ${playerName}`);
+        
         if (!sessions.has(sessionId)) {
             sessions.set(sessionId, new Map());
             sessionMetadata.set(sessionId, { created: Date.now() });
@@ -97,6 +106,7 @@ io.on('connection', (socket) => {
         });
         
         socket.join(sessionId);
+        console.log(`✅ Игрок ${playerName} присоединился. Всего в сессии: ${session.size}`);
     });
     
     socket.on('move', (position, rotation) => {
@@ -116,7 +126,22 @@ io.on('connection', (socket) => {
         });
     });
     
+    socket.on('shoot', (data) => {
+        const playerData = playerDataMap.get(socket.id);
+        if (!playerData) return;
+        
+        const sessionId = playerData.sessionId;
+        if (!sessionId) return;
+        
+        socket.to(sessionId).emit('shoot', {
+            position: data.position,
+            direction: data.direction,
+            ownerId: socket.id
+        });
+    });
+    
     socket.on('disconnect', () => {
+        console.log('👋 Игрок отключился:', socket.id);
         const playerData = playerDataMap.get(socket.id);
         if (!playerData) return;
         
@@ -131,4 +156,9 @@ io.on('connection', (socket) => {
         
         playerDataMap.delete(socket.id);
     });
+});
+
+process.on('SIGINT', () => {
+    console.log('\n🛑 Завершение работы...');
+    process.exit(0);
 });
