@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Game</title>  
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">    
+</head>
+<body>   
+     <!-- Кнопка возврата в лобби -->
+     <button class="back-btn" id="backBtn">
+        ← Назад в лобби
+    </button>
+
+    <!-- Лобби -->
+    <div id="lobby-container">
+        <div class="lobby-card">
+            <!-- Имя игрока -->
+            <div class="mb-3">
+                <label class="form-label">Ваше имя</label>
+                <input type="text" class="form-control" id="playerName" 
+                       placeholder="Введите имя..." value="Player_${Math.floor(Math.random() * 1000)}">
+            </div>
+            
+            <!-- Список сессий -->
+            <div class="mb-3">
+                <label class="form-label">Доступные сессии</label>
+                <div id="sessionList" class="session-list">
+                    <div class="loading-text"> Загрузка сессий...</div>
+                </div>
+            </div>
+            
+            <hr class="divider">
+            
+            <!-- Кнопки действий -->
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary flex-grow-1" id="createSessionBtn">
+                    ✨ Создать новую сессию
+                </button>
+                <button class="btn btn-secondary" id="refreshSessionsBtn">
+                    🔄
+                </button>
+            </div>
+            
+            <div id="errorMessage" class="alert alert-danger mt-3" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Игровой контейнер -->
+    <div id="game-container"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "/node_modules/three/build/three.module.js",
+                "three/addons/": "/node_modules/three/examples/jsm/",
+                "socket.io-client": "/node_modules/socket.io-client/dist/socket.io.esm.min.js"
+            }
+        }
+    </script>
+    <script type="module" src="./src/main.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+
+
+

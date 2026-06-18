@@ -1,0 +1,32 @@
+{
+  "name": "galaxy-proj",
+  "version": "0.1.5",
+  "description": "<!--\r   ИТОГОВЫЙ ЭКЗАМЕН: Fullstack Мультиплеерная игра\r   Дисциплина: Веб-разработка / Технологии интерактивных систем\r   Преподаватель: [@Gabryelf - Валеев Сергей]\r -->",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gabryelf/Volumetric-Graphics-Js.git"
+  },
+  "license": "ISC",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "vite": "^8.0.12"
+  },
+  "bugs": {
+    "url": "https://github.com/Gabryelf/Volumetric-Graphics-Js/issues"
+  },
+  "homepage": "https://github.com/Gabryelf/Volumetric-Graphics-Js#readme",
+  "dependencies": {
+    "@fastify/static": "^9.1.3",
+    "fastify": "^5.8.5",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "three": "^0.184.0",
+    "tweakpane": "^4.0.5"
+  }
+}
