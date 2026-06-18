@@ -5,51 +5,368 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multiplayer Game</title>  
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* ===== ОБЩИЕ ===== */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #0a0a0a;
+            font-family: 'Arial', sans-serif;
+        }
+
+        /* ===== ЛОББИ ===== */
+        #lobby-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            background: rgba(10, 10, 10, 0.92);
+        }
+
+        .lobby-card {
+            background: rgba(20, 20, 30, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 40px;
+            width: 420px;
+            max-width: 90%;
+            color: white;
+            box-shadow: 0 0 60px rgba(0, 100, 255, 0.1);
+        }
+
+        .lobby-card .form-label {
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .lobby-card .form-control {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 12px;
+        }
+        .lobby-card .form-control:focus {
+            background: rgba(255,255,255,0.08);
+            border-color: #4a9eff;
+            box-shadow: 0 0 20px rgba(74, 158, 255, 0.2);
+            color: white;
+        }
+        .lobby-card .form-control::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+
+        .session-list {
+            max-height: 220px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .session-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .session-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .session-list::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+        }
+
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            margin: 4px 0;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .session-item:hover {
+            background: rgba(74, 158, 255, 0.1);
+            border-color: rgba(74, 158, 255, 0.2);
+            transform: scale(1.01);
+        }
+        .session-item .badge {
+            background: rgba(74, 158, 255, 0.2);
+            color: #4a9eff;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .loading-text {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 14px;
+        }
+
+        .divider {
+            border-color: rgba(255,255,255,0.06);
+            margin: 20px 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4a9eff, #6c5ce7);
+            border: none;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(74, 158, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.6);
+            padding: 12px 16px;
+            border-radius: 12px;
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        #errorMessage {
+            font-size: 13px;
+            border-radius: 12px;
+        }
+
+        /* ===== КНОПКА НАЗАД ===== */
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 30;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.7);
+            padding: 8px 18px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: none;
+            letter-spacing: 0.3px;
+        }
+        .back-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border-color: rgba(255,255,255,0.2);
+            transform: scale(1.02);
+        }
+
+        /* ===== HUD ===== */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            font-family: 'Arial', sans-serif;
+            color: white;
+            text-shadow: 0 0 20px rgba(0,0,0,0.9);
+            z-index: 10;
+            display: none;
+        }
+
+        #hud-top-left {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+        }
+
+        #hud-top-right {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            text-align: right;
+        }
+
+        .hud-item {
+            margin-bottom: 10px;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(8px);
+            padding: 8px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.06);
+            min-width: 140px;
+            pointer-events: none;
+        }
+
+        .hud-item.hud-compact {
+            min-width: auto;
+            padding: 6px 14px;
+        }
+
+        .hud-icon {
+            margin-right: 8px;
+            font-size: 16px;
+        }
+
+        .hud-label {
+            font-size: 12px;
+            opacity: 0.5;
+            margin-left: 4px;
+            font-weight: 300;
+        }
+
+        .hud-bar {
+            width: 100%;
+            height: 5px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .hud-bar div {
+            height: 100%;
+            width: 100%;
+            border-radius: 4px;
+            transition: width 0.15s ease;
+        }
+
+        #hp-bar {
+            background: linear-gradient(90deg, #ff3355, #ff6b8a);
+        }
+
+        #overheat-bar {
+            background: linear-gradient(90deg, #ffcc00, #ff8800);
+        }
+
+        .hud-value {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .hud-value-small {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ===== АДАПТИВ ===== */
+        @media (max-width: 600px) {
+            .lobby-card {
+                padding: 24px;
+                width: 95%;
+            }
+            .hud-item {
+                padding: 5px 12px;
+                min-width: 100px;
+                margin-bottom: 6px;
+            }
+            .hud-value {
+                font-size: 14px;
+            }
+            #hud-top-left {
+                top: 14px;
+                left: 14px;
+            }
+            #hud-top-right {
+                top: 14px;
+                right: 14px;
+            }
+        }
+    </style>
 </head>
 <body>   
-     <!-- Кнопка возврата в лобби -->
-     <button class="back-btn" id="backBtn">
-        ← Назад в лобби
-    </button>
+    <!-- Кнопка возврата в лобби -->
+    <button class="back-btn" id="backBtn">← Назад в лобби</button>
 
-    <!-- Лобби -->
+    <!-- ЛОББИ -->
     <div id="lobby-container">
         <div class="lobby-card">
-            <!-- Имя игрока -->
             <div class="mb-3">
                 <label class="form-label">Ваше имя</label>
-                <input type="text" class="form-control" id="playerName" 
-                       placeholder="Введите имя..." value="Player_${Math.floor(Math.random() * 1000)}">
+                <input type="text" class="form-control" id="playerName" placeholder="Введите имя...">
             </div>
-            
-            <!-- Список сессий -->
             <div class="mb-3">
                 <label class="form-label">Доступные сессии</label>
                 <div id="sessionList" class="session-list">
-                    <div class="loading-text"> Загрузка сессий...</div>
+                    <div class="loading-text">Загрузка сессий...</div>
                 </div>
             </div>
-            
             <hr class="divider">
-            
-            <!-- Кнопки действий -->
             <div class="d-flex gap-2">
-                <button class="btn btn-primary flex-grow-1" id="createSessionBtn">
-                    ✨ Создать новую сессию
-                </button>
-                <button class="btn btn-secondary" id="refreshSessionsBtn">
-                    🔄
-                </button>
+                <button class="btn btn-primary flex-grow-1" id="createSessionBtn">✨ Создать новую сессию</button>
+                <button class="btn btn-secondary" id="refreshSessionsBtn">🔄</button>
             </div>
-            
             <div id="errorMessage" class="alert alert-danger mt-3" style="display: none;"></div>
         </div>
     </div>
 
-    <!-- Игровой контейнер -->
+    <!-- ИГРОВОЙ КОНТЕЙНЕР -->
     <div id="game-container"></div>
 
+    <!-- HUD -->
+    <div id="hud">
+        <!-- Левый верхний угол -->
+        <div id="hud-top-left">
+            <div class="hud-item">
+                <span class="hud-icon">❤️</span>
+                <span class="hud-value" id="hp-text">100 / 100</span>
+                <div class="hud-bar"><div id="hp-bar" style="width: 100%;"></div></div>
+            </div>
+            <div class="hud-item">
+                <span class="hud-icon">🔫</span>
+                <span class="hud-value" id="overheat-text">0%</span>
+                <div class="hud-bar"><div id="overheat-bar" style="width: 0%;"></div></div>
+            </div>
+        </div>
+
+        <!-- Правый верхний угол -->
+        <div id="hud-top-right">
+            <div class="hud-item hud-compact">
+                <span class="hud-icon">⭐</span>
+                <span class="hud-value" id="score-text">0</span>
+                <span class="hud-label">очков</span>
+            </div>
+            <div class="hud-item hud-compact">
+                <span class="hud-icon">💥</span>
+                <span class="hud-value" id="asteroids-destroyed">0</span>
+                <span class="hud-label">уничтожено</span>
+            </div>
+            <div class="hud-item hud-compact" style="opacity: 0.5;">
+                <span class="hud-icon">☄️</span>
+                <span class="hud-value" id="asteroids-total">0</span>
+                <span class="hud-label">на карте</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== СКРИПТЫ ===== -->
     <script type="importmap">
         {
             "imports": {
@@ -59,10 +376,23 @@
             }
         }
     </script>
+
+    <script>
+        // Устанавливаем случайное имя при загрузке
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('playerName');
+            const input = document.getElementById('playerName');
+            if (savedName) {
+                input.value = savedName;
+            } else {
+                const randomName = `Player_${Math.floor(Math.random() * 1000)}`;
+                input.value = randomName;
+                localStorage.setItem('playerName', randomName);
+            }
+        });
+    </script>
+
     <script type="module" src="./src/main.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
-
-
