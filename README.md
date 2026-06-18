@@ -85,3 +85,8 @@
     ```bash
     git clone https://github.com/ваш-аккаунт/название-репозитория.git
     cd название-репозитория
+
+
+
+    **ССЫЛКА НА РЕНДЕРКОМ**
+    https://dashboard.render.com/web/srv-d8q6m7f7f7vs73e0dts0
