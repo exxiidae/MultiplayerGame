@@ -193,6 +193,32 @@
             border-radius: 12px;
         }
 
+        /* ===== СТАТИСТИКА ===== */
+        #stats-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+            margin-top: 10px;
+        }
+        #stats-container .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        #stats-container .stat-row:last-child {
+            border-bottom: none;
+        }
+        #stats-container .stat-value {
+            color: #4a9eff;
+            font-weight: 600;
+        }
+        #stats-container .stat-label {
+            opacity: 0.6;
+        }
+
         /* ===== КНОПКА НАЗАД ===== */
         .back-btn {
             position: absolute;
@@ -392,7 +418,7 @@
                 <input type="text" class="form-control" id="playerName" placeholder="Введите имя...">
             </div>
             
-            <!-- ===== ВЫБОР КОРАБЛЯ (ТРИ КОРАБЛЯ) ===== -->
+            <!-- ===== ВЫБОР КОРАБЛЯ ===== -->
             <div class="mb-3">
                 <label class="form-label">Выбор корабля</label>
                 <div class="ship-selection" id="shipSelection">
@@ -411,6 +437,14 @@
                         <span class="ship-name">LazerShip</span>
                         <span class="ship-stat">🔫 Лазер с зарядкой</span>
                     </div>
+                </div>
+            </div>
+            
+            <!-- ===== СТАТИСТИКА ===== -->
+            <div id="stats-container" style="display: none;">
+                <label class="form-label" style="font-size: 12px;">📊 Ваша статистика</label>
+                <div id="player-stats">
+                    <div class="loading-text">Загрузка...</div>
                 </div>
             </div>
             
@@ -522,6 +556,46 @@
                 });
                 console.log('📦 Загружен сохранённый корабль:', savedShip);
             }
+
+            // ===== СТАТИСТИКА =====
+            const playerNameInput = document.getElementById('playerName');
+            const statsContainer = document.getElementById('stats-container');
+            const playerStatsDiv = document.getElementById('player-stats');
+
+            async function loadStats(username) {
+                if (username.length < 2) return;
+                try {
+                    const response = await fetch(`/api/player/name/${encodeURIComponent(username)}`);
+                    if (response.ok) {
+                        const stats = await response.json();
+                        statsContainer.style.display = 'block';
+                        playerStatsDiv.innerHTML = `
+                            <div class="stat-row"><span class="stat-label">⭐ Очки</span><span class="stat-value">${stats.score || 0}</span></div>
+                            <div class="stat-row"><span class="stat-label">💀 Убийств</span><span class="stat-value">${stats.kills || 0}</span></div>
+                            <div class="stat-row"><span class="stat-label">🏆 Побед</span><span class="stat-value">${stats.wins || 0}</span></div>
+                            <div class="stat-row"><span class="stat-label">☄️ Астероидов</span><span class="stat-value">${stats.asteroids_destroyed || 0}</span></div>
+                            <div class="stat-row"><span class="stat-label">🎮 Игр сыграно</span><span class="stat-value">${stats.total_games || 0}</span></div>
+                        `;
+                    } else {
+                        statsContainer.style.display = 'block';
+                        playerStatsDiv.innerHTML = `<div class="loading-text">✨ Новый игрок! Добро пожаловать!</div>`;
+                    }
+                } catch (err) {
+                    console.error('❌ Ошибка загрузки статистики:', err);
+                }
+            }
+
+            playerNameInput.addEventListener('change', () => {
+                loadStats(playerNameInput.value.trim());
+            });
+
+            // Загружаем статистику при старте
+            setTimeout(() => {
+                const username = playerNameInput.value.trim();
+                if (username.length > 1) {
+                    loadStats(username);
+                }
+            }, 500);
         });
     </script>
 

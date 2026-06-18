@@ -13,12 +13,12 @@ import { BulletPool } from './entities/BulletPool.js';
 const SHIP_STATS = {
     0: { // SCOUT
         name: 'Scout',
-        description: ' Быстрый, но слабый',
+        description: '⚡ Быстрый, но слабый',
         hp: 70,
         speed: 8,
         rotSpeed: 3.5,
         damage: 15,
-        overheatRate: 20,
+        overheatRate: 25,
         cooldownRate: 35,
         modelIndex: 0,
         rotationOffset: 0,
@@ -26,7 +26,7 @@ const SHIP_STATS = {
     },
     1: { // ASSAULT
         name: 'Assault',
-        description: ' Тяжёлый штурмовик',
+        description: '🛡️ Тяжёлый штурмовик',
         hp: 150,
         speed: 3,
         rotSpeed: 1.5,
@@ -37,21 +37,20 @@ const SHIP_STATS = {
         rotationOffset: -Math.PI / 2,
         scale: 0.5
     },
-    2: { // LAZERSHIP 
+    2: { // LAZERSHIP
         name: 'LazerShip',
-        description: ' Мощный лазер с зарядкой',
+        description: '⚡🔫 Мощный лазер с зарядкой',
         hp: 100,
         speed: 4,
         rotSpeed: 2,
-        damage: 99999,           
-        overheatRate: 100,       
-        cooldownRate: 30,
-        modelIndex: 4,           
+        damage: 99999,
+        overheatRate: 20,
+        cooldownRate: 20,
+        modelIndex: 4,
         rotationOffset: 0,
-        rotationOffset: Math.PI / 2,
         scale: 0.8,
-        isLazer: true,           
-        lazerChargeTime: 1.0     
+        isLazer: true,
+        lazerChargeTime: 1.0
     }
 };
 
@@ -116,6 +115,24 @@ class Game {
         }
 
         this.initLobby();
+    }
+
+    // ========== ЗАГРУЗКА СТАТИСТИКИ ПО НИКУ ==========
+    async loadPlayerStats(username) {
+        try {
+            const response = await fetch(`/api/player/name/${encodeURIComponent(username)}`);
+            if (response.ok) {
+                const stats = await response.json();
+                console.log('📊 Статистика игрока:', stats);
+                return stats;
+            } else {
+                console.log('📊 Новый игрок, статистики пока нет');
+                return null;
+            }
+        } catch (err) {
+            console.error('❌ Ошибка загрузки статистики:', err);
+            return null;
+        }
     }
 
     // ========== ЛОББИ ==========
@@ -236,6 +253,13 @@ class Game {
         this.isOverheated = false;
         this.isDead = false;
         this.respawnTimer = 0;
+
+        // Загружаем статистику игрока
+        this.loadPlayerStats(playerName).then(stats => {
+            if (stats) {
+                console.log(`🏆 ${playerName}: Очки: ${stats.score}, Убийств: ${stats.kills}`);
+            }
+        });
 
         this.init();
     }
@@ -453,67 +477,64 @@ class Game {
         this.lazerChargeStart = performance.now();
         console.log('🔋 Зарядка лазера...');
         
-        // Визуальный фидбек (можно добавить)
         document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ff00ff, #ff00cc)';
     }
 
-   fireLazer() {
-    if (!this.lazerCharging) return;
-    this.lazerCharging = false;
-    
-    const chargeTime = (performance.now() - this.lazerChargeStart) / 1000;
-    if (chargeTime < this.lazerChargeTime) {
-        console.log(`❌ Зарядка прервана: ${chargeTime.toFixed(2)}с / ${this.lazerChargeTime}с`);
-        document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
-        return;
-    }
-    
-    console.log(`💥 ЛАЗЕР ВЫСТРЕЛ! Зарядка: ${chargeTime.toFixed(2)}с`);
-    document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
-    
-    // Стреляем лазером
-    this.shootLazer();
-    
-    // Перегрев
-    this.overheat = Math.min(this.overheatMax, this.overheat + this.overheatRate);
-    if (this.overheat >= this.overheatMax) {
-        this.isOverheated = true;
-        console.log('🔥 Пушка перегрелась!');
-    }
-    this.updateHUD();
-}
-
-   shootLazer() {
-    if (!this.localShip || !this.bulletPool) return;
-    
-    // ===== РАЗВОРАЧИВАЕМ НАПРАВЛЕНИЕ НА 180 ГРАДУСОВ =====
-    const direction = new THREE.Vector3(0, 0, -1);  // было 1, стало -1
-    direction.applyQuaternion(this.localShip.quaternion);
-    
-    const bullet = this.bulletPool.shoot(
-        this.localShip.position.clone(),
-        direction,
-        this.networkManager?.socket?.id || 'local'
-    );
-    
-    if (bullet) {
-        bullet.ownerId = this.networkManager?.socket?.id || 'local';
-        bullet.mesh.material.color.setHex(0xff00ff);
-        bullet.mesh.material.emissive.setHex(0xff00ff);
-        bullet.mesh.material.emissiveIntensity = 1.0;
-        bullet.mesh.scale.set(2, 2, 2);
+    fireLazer() {
+        if (!this.lazerCharging) return;
+        this.lazerCharging = false;
         
-        const lazerSpeed = 120;
-        bullet.speed = lazerSpeed;
-        bullet.damage = this.shipDamage || 99999;
+        const chargeTime = (performance.now() - this.lazerChargeStart) / 1000;
+        if (chargeTime < this.lazerChargeTime) {
+            console.log(`❌ Зарядка прервана: ${chargeTime.toFixed(2)}с / ${this.lazerChargeTime}с`);
+            document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
+            return;
+        }
+        
+        console.log(`💥 ЛАЗЕР ВЫСТРЕЛ! Зарядка: ${chargeTime.toFixed(2)}с`);
+        document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
+        
+        this.shootLazer();
+        
+        this.overheat = Math.min(this.overheatMax, this.overheat + this.overheatRate);
+        if (this.overheat >= this.overheatMax) {
+            this.isOverheated = true;
+            console.log('🔥 Пушка перегрелась!');
+        }
+        this.updateHUD();
     }
-    
-    if (this.networkManager && this.networkManager.socket) {
-        this.networkManager.sendShoot(this.localShip.position, direction);
+
+    shootLazer() {
+        if (!this.localShip || !this.bulletPool) return;
+        
+        const direction = new THREE.Vector3(0, 0, -1);
+        direction.applyQuaternion(this.localShip.quaternion);
+        
+        const bullet = this.bulletPool.shoot(
+            this.localShip.position.clone(),
+            direction,
+            this.networkManager?.socket?.id || 'local'
+        );
+        
+        if (bullet) {
+            bullet.ownerId = this.networkManager?.socket?.id || 'local';
+            bullet.mesh.material.color.setHex(0xff00ff);
+            bullet.mesh.material.emissive.setHex(0xff00ff);
+            bullet.mesh.material.emissiveIntensity = 1.0;
+            bullet.mesh.scale.set(2, 2, 2);
+            
+            const lazerSpeed = 120;
+            bullet.speed = lazerSpeed;
+            bullet.damage = this.shipDamage || 99999;
+        }
+        
+        if (this.networkManager && this.networkManager.socket) {
+            this.networkManager.sendShoot(this.localShip.position, direction);
+        }
+        
+        this.updateHUD();
     }
-    
-    this.updateHUD();
-}
+
     // ========== ЭФФЕКТ ВЗРЫВА ==========
     createExplosion(position) {
         const particleCount = 50;
@@ -704,7 +725,7 @@ class Game {
 
     // ========== СТРЕЛЬБА (ОБЫЧНАЯ) ==========
     shoot() {
-        if (this.isLazer) return; // Лазер использует отдельную логику
+        if (this.isLazer) return;
         
         if (!this.isGameActive || !this.localShip || !this.bulletPool || this.isDead) return;
         
@@ -768,15 +789,22 @@ class Game {
         document.getElementById('score-text').textContent = this.score;
         document.getElementById('asteroids-destroyed').textContent = this.asteroidsDestroyed;
         
-        // Отображение типа оружия
         const weaponText = this.isLazer ? '🔫 ЛАЗЕР (зарядка 1с)' : '🔫 ПУШКА';
-        document.getElementById('weapon-type').textContent = weaponText;
+        document.getElementById('weapon-text').textContent = weaponText;
     }
 
     addScore(points) {
         this.score += points;
         this.updateHUD();
         console.log('➕ Очки добавлены:', points, 'Всего:', this.score);
+        
+        // Отправляем обновление статистики на сервер
+        if (this.networkManager && this.networkManager.socket) {
+            this.networkManager.socket.emit('updateStats', {
+                score: points,
+                asteroids_destroyed: 0
+            });
+        }
     }
 
     takeDamage(damage) {
@@ -830,102 +858,108 @@ class Game {
 
     // ========== ОБНОВЛЕНИЕ КОРАБЛЯ ==========
     updateLocalShip(deltaTime) {
-    this.updateRespawnTimer(deltaTime);
-    
-    if (!this.localShip) return;
-    
-    if (!this.isDead) {
-        const moveSpeed = this.shipSpeed;
-        const rotSpeed = this.shipRotSpeed;
-        const verticalSpeed = 3;
-
-        // ===== ПОВОРОТ (A/D) — без изменений =====
-        if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
-        if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
-
-        // ===== ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S) =====
-        if (this.isLazer) {
-            // === ДЛЯ LAZERSHIP: W и S ИНВЕРТИРОВАНЫ ===
-            if (this.keys.w) this.localShip.translateZ(-moveSpeed * deltaTime);  // было translateZ(moveSpeed)
-            if (this.keys.s) this.localShip.translateZ(moveSpeed * deltaTime);   // было translateZ(-moveSpeed)
-        } else {
-            // === ДЛЯ ОСТАЛЬНЫХ КОРАБЛЕЙ ===
-            if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
-            if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
-        }
-
-        // ===== ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT) =====
-        if (this.keys.space) {
-            this.localShip.position.y += verticalSpeed * deltaTime;
-        }
-        if (this.keys.shift) {
-            this.localShip.position.y -= verticalSpeed * deltaTime;
-        }
-
-        if (this.networkManager) {
-            this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
-        }
-
-        if (this.cameraManager) {
-            this.cameraManager.update(this.localShip, deltaTime);
-        }
-    } else {
-        if (this.cameraManager && this.localShip) {
-            this.cameraManager.update(this.localShip, deltaTime);
-        }
-    }
-
-    // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА =====
-    if (this.overheat > 0) {
-        this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
-        if (this.overheat <= 0 && this.isOverheated) {
-            this.isOverheated = false;
-            this.overheat = 0;
-            console.log('✅ Пушка остыла!');
-        }
-    }
-
-    // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ =====
-    if (this.bulletPool && this.networkManager) {
-        const activeBullets = this.bulletPool.getActiveBullets();
+        this.updateRespawnTimer(deltaTime);
         
-        for (let i = activeBullets.length - 1; i >= 0; i--) {
-            const bullet = activeBullets[i];
-            const bulletPos = bullet.mesh.position;
-            const ownerId = bullet.ownerId;
-            const damage = bullet.damage || this.shipDamage || 20;
+        if (!this.localShip) return;
+        
+        if (!this.isDead) {
+            const moveSpeed = this.shipSpeed;
+            const rotSpeed = this.shipRotSpeed;
+            const verticalSpeed = 3;
+
+            // ===== ПОВОРОТ (A/D) =====
+            if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
+            if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
+
+            // ===== ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S) =====
+            if (this.isLazer) {
+                // ДЛЯ LAZERSHIP: W и S ИНВЕРТИРОВАНЫ
+                if (this.keys.w) this.localShip.translateZ(-moveSpeed * deltaTime);
+                if (this.keys.s) this.localShip.translateZ(moveSpeed * deltaTime);
+            } else {
+                // ДЛЯ ОСТАЛЬНЫХ КОРАБЛЕЙ
+                if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
+                if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
+            }
+
+            // ===== ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT) =====
+            if (this.keys.space) {
+                this.localShip.position.y += verticalSpeed * deltaTime;
+            }
+            if (this.keys.shift) {
+                this.localShip.position.y -= verticalSpeed * deltaTime;
+            }
+
+            if (this.networkManager) {
+                this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
+            }
+
+            if (this.cameraManager) {
+                this.cameraManager.update(this.localShip, deltaTime);
+            }
+        } else {
+            if (this.cameraManager && this.localShip) {
+                this.cameraManager.update(this.localShip, deltaTime);
+            }
+        }
+
+        // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА =====
+        if (this.overheat > 0) {
+            this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
+            if (this.overheat <= 0 && this.isOverheated) {
+                this.isOverheated = false;
+                this.overheat = 0;
+                console.log('✅ Пушка остыла!');
+            }
+        }
+
+        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ =====
+        if (this.bulletPool && this.networkManager) {
+            const activeBullets = this.bulletPool.getActiveBullets();
             
-            for (const [playerId, remote] of this.remotePlayers) {
-                if (playerId === ownerId) continue;
-                if (remote.isDead) continue;
+            for (let i = activeBullets.length - 1; i >= 0; i--) {
+                const bullet = activeBullets[i];
+                const bulletPos = bullet.mesh.position;
+                const ownerId = bullet.ownerId;
+                const damage = bullet.damage || this.shipDamage || 20;
                 
-                const dist = bulletPos.distanceTo(remote.model.position);
-                if (dist < 2.5) {
-                    if (this.networkManager.socket) {
-                        this.networkManager.socket.emit('hitPlayer', playerId, damage);
-                        this.bulletPool.deactivateBullet(bullet);
-                        activeBullets.splice(i, 1);
-                        this.createExplosion(remote.model.position);
+                for (const [playerId, remote] of this.remotePlayers) {
+                    if (playerId === ownerId) continue;
+                    if (remote.isDead) continue;
+                    
+                    const dist = bulletPos.distanceTo(remote.model.position);
+                    if (dist < 2.5) {
+                        if (this.networkManager.socket) {
+                            this.networkManager.socket.emit('hitPlayer', playerId, damage);
+                            this.bulletPool.deactivateBullet(bullet);
+                            activeBullets.splice(i, 1);
+                            this.createExplosion(remote.model.position);
+                            
+                            // Отправляем обновление статистики (убийство)
+                            this.networkManager.socket.emit('updateStats', {
+                                kills: 1,
+                                score: 10
+                            });
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         }
-    }
 
-    if (this.bulletPool) {
-        this.bulletPool.update(deltaTime);
-        if (this.asteroidManager) {
-            this.asteroidManager.checkBulletCollisions(this.bulletPool.getActiveBullets());
+        if (this.bulletPool) {
+            this.bulletPool.update(deltaTime);
+            if (this.asteroidManager) {
+                this.asteroidManager.checkBulletCollisions(this.bulletPool.getActiveBullets());
+            }
         }
-    }
 
-    if (this.asteroidManager) {
-        document.getElementById('asteroids-total').textContent = this.asteroidManager.asteroids.length;
-    }
+        if (this.asteroidManager) {
+            document.getElementById('asteroids-total').textContent = this.asteroidManager.asteroids.length;
+        }
 
-    this.updateHUD();
-}
+        this.updateHUD();
+    }
 
     // ========== ЦИКЛ ==========
     onWindowResize() {
