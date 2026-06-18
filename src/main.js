@@ -9,6 +9,52 @@ import { NetworkManager } from './core/NetworkManager.js';
 import { AsteroidManager } from './core/AsteroidManager.js';
 import { BulletPool } from './entities/BulletPool.js';
 
+// ===== ХАРАКТЕРИСТИКИ КОРАБЛЕЙ =====
+const SHIP_STATS = {
+    0: { // SCOUT
+        name: 'Scout',
+        description: ' Быстрый, но слабый',
+        hp: 70,
+        speed: 8,
+        rotSpeed: 3.5,
+        damage: 15,
+        overheatRate: 20,
+        cooldownRate: 35,
+        modelIndex: 0,
+        rotationOffset: 0,
+        scale: 1
+    },
+    1: { // ASSAULT
+        name: 'Assault',
+        description: ' Тяжёлый штурмовик',
+        hp: 150,
+        speed: 3,
+        rotSpeed: 1.5,
+        damage: 35,
+        overheatRate: 10,
+        cooldownRate: 15,
+        modelIndex: 1,
+        rotationOffset: -Math.PI / 2,
+        scale: 0.5
+    },
+    2: { // LAZERSHIP 
+        name: 'LazerShip',
+        description: ' Мощный лазер с зарядкой',
+        hp: 100,
+        speed: 4,
+        rotSpeed: 2,
+        damage: 99999,           
+        overheatRate: 100,       
+        cooldownRate: 30,
+        modelIndex: 4,           
+        rotationOffset: 0,
+        rotationOffset: Math.PI / 2,
+        scale: 0.8,
+        isLazer: true,           
+        lazerChargeTime: 1.0     
+    }
+};
+
 class Game {
     constructor() {
         this.sceneManager = null;
@@ -29,6 +75,7 @@ class Game {
         this.animationFrameId = null;
         this.asteroidManager = null;
         this.bulletPool = null;
+        this.selectedShip = 0;
 
         // HUD
         this.hp = 100;
@@ -36,10 +83,19 @@ class Game {
         this.overheat = 0;
         this.overheatMax = 100;
         this.overheatCooldownRate = 20.0;
+        this.overheatRate = 8;
         this.score = 0;
         this.asteroidsDestroyed = 0;
         this.isDead = false;
         this.respawnTimer = 0;
+        this.shipSpeed = 5;
+        this.shipRotSpeed = 2;
+        this.shipDamage = 20;
+        this.shipRotationOffset = 0;
+        this.isLazer = false;
+        this.lazerChargeTime = 1.0;
+        this.lazerCharging = false;
+        this.lazerChargeStart = 0;
 
         // СТРЕЛЬБА
         this.shootCooldown = 0.1;
@@ -48,6 +104,16 @@ class Game {
 
         // ВЗРЫВ
         this.explosionParticles = [];
+
+        const savedShip = localStorage.getItem('selectedShip');
+        if (savedShip !== null && SHIP_STATS[savedShip]) {
+            this.selectedShip = parseInt(savedShip);
+            console.log('📦 Загружен корабль из localStorage:', SHIP_STATS[this.selectedShip].name);
+        } else {
+            this.selectedShip = 0;
+            localStorage.setItem('selectedShip', '0');
+            console.log('📦 Установлен корабль по умолчанию: Scout');
+        }
 
         this.initLobby();
     }
@@ -60,11 +126,6 @@ class Game {
         const refreshSessionsBtn = document.getElementById('refreshSessionsBtn');
         const backBtn = document.getElementById('backBtn');
         const errorMessage = document.getElementById('errorMessage');
-        const selectShipBtn = document.getElementById('selectShipBtn');
-
-        selectShipBtn.addEventListener('click', () => {
-            alert('🚀 Выбор кораблей будет доступен в следующем обновлении!');
-        });
 
         setTimeout(() => {
             const loader = new THREE.TextureLoader();
@@ -141,6 +202,12 @@ class Game {
     startGame(sessionId, playerName) {
         console.log('🎮 Запуск игры, сессия:', sessionId, 'игрок:', playerName);
         
+        const savedShip = localStorage.getItem('selectedShip');
+        if (savedShip !== null && SHIP_STATS[savedShip]) {
+            this.selectedShip = parseInt(savedShip);
+        }
+        console.log('🚀 Выбран корабль:', SHIP_STATS[this.selectedShip].name);
+        
         document.getElementById('lobby-container').style.display = 'none';
         document.getElementById('game-container').style.display = 'block';
         document.getElementById('backBtn').style.display = 'block';
@@ -150,8 +217,19 @@ class Game {
         this.playerName = playerName;
         this.isGameActive = true;
 
-        this.hp = 100;
-        this.maxHp = 100;
+        const stats = SHIP_STATS[this.selectedShip];
+        this.maxHp = stats.hp;
+        this.hp = stats.hp;
+        this.shipSpeed = stats.speed;
+        this.shipRotSpeed = stats.rotSpeed;
+        this.shipDamage = stats.damage;
+        this.overheatRate = stats.overheatRate;
+        this.overheatCooldownRate = stats.cooldownRate;
+        this.shipRotationOffset = stats.rotationOffset || 0;
+        this.isLazer = stats.isLazer || false;
+        this.lazerChargeTime = stats.lazerChargeTime || 1.0;
+        this.lazerCharging = false;
+        this.lazerChargeStart = 0;
         this.overheat = 0;
         this.score = 0;
         this.asteroidsDestroyed = 0;
@@ -215,6 +293,7 @@ class Game {
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
     init() {
         console.log('🛠️ Инициализация игры...');
+        console.log('🚀 Загружается корабль:', SHIP_STATS[this.selectedShip].name);
         
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -312,9 +391,11 @@ class Game {
             }
         };
 
-        this.networkManager.connect(this.sessionId, this.playerName, 0);
+        this.networkManager.connect(this.sessionId, this.playerName, this.selectedShip);
 
-        this.ship = new Ship(this.modelLoader, 0);
+        // ===== СОЗДАЁМ КОРАБЛЬ =====
+        const stats = SHIP_STATS[this.selectedShip];
+        this.ship = new Ship(this.modelLoader, this.selectedShip, stats.scale || 1);
         this.clock = new THREE.Clock();
 
         setTimeout(() => {
@@ -324,7 +405,11 @@ class Game {
                 return;
             }
             
-            this.maxHp = this.ship.hp || 100;
+            if (this.shipRotationOffset !== 0) {
+                this.localShip.rotation.y = this.shipRotationOffset;
+                console.log(`🔄 Применён разворот модели на ${this.shipRotationOffset * 180 / Math.PI}°`);
+            }
+            
             this.hp = this.maxHp;
             this.updateHUD();
 
@@ -336,11 +421,22 @@ class Game {
             this.cameraManager.createOrbitControls(this.localShip);
 
             this.asteroidManager = new AsteroidManager(scene, this.localShip, this.ship);
-            console.log('✅ Игра инициализирована!');
+            console.log(`✅ Игра инициализирована! Корабль: ${SHIP_STATS[this.selectedShip].name}`);
         }, 500);
 
-        this.renderer.domElement.addEventListener('click', () => {
-            this.shoot();
+        // ===== КЛИК МЫШИ ДЛЯ СТРЕЛЬБЫ =====
+        this.renderer.domElement.addEventListener('mousedown', () => {
+            if (this.isLazer) {
+                this.startLazerCharge();
+            } else {
+                this.shoot();
+            }
+        });
+
+        this.renderer.domElement.addEventListener('mouseup', () => {
+            if (this.isLazer && this.lazerCharging) {
+                this.fireLazer();
+            }
         });
 
         this.setupControls();
@@ -348,6 +444,76 @@ class Game {
         this.animate();
     }
 
+    // ========== ЛАЗЕР ==========
+    startLazerCharge() {
+        if (!this.isGameActive || this.isDead || this.isOverheated) return;
+        if (this.lazerCharging) return;
+        
+        this.lazerCharging = true;
+        this.lazerChargeStart = performance.now();
+        console.log('🔋 Зарядка лазера...');
+        
+        // Визуальный фидбек (можно добавить)
+        document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ff00ff, #ff00cc)';
+    }
+
+   fireLazer() {
+    if (!this.lazerCharging) return;
+    this.lazerCharging = false;
+    
+    const chargeTime = (performance.now() - this.lazerChargeStart) / 1000;
+    if (chargeTime < this.lazerChargeTime) {
+        console.log(`❌ Зарядка прервана: ${chargeTime.toFixed(2)}с / ${this.lazerChargeTime}с`);
+        document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
+        return;
+    }
+    
+    console.log(`💥 ЛАЗЕР ВЫСТРЕЛ! Зарядка: ${chargeTime.toFixed(2)}с`);
+    document.getElementById('overheat-bar').style.background = 'linear-gradient(90deg, #ffcc00, #ff8800)';
+    
+    // Стреляем лазером
+    this.shootLazer();
+    
+    // Перегрев
+    this.overheat = Math.min(this.overheatMax, this.overheat + this.overheatRate);
+    if (this.overheat >= this.overheatMax) {
+        this.isOverheated = true;
+        console.log('🔥 Пушка перегрелась!');
+    }
+    this.updateHUD();
+}
+
+   shootLazer() {
+    if (!this.localShip || !this.bulletPool) return;
+    
+    // ===== РАЗВОРАЧИВАЕМ НАПРАВЛЕНИЕ НА 180 ГРАДУСОВ =====
+    const direction = new THREE.Vector3(0, 0, -1);  // было 1, стало -1
+    direction.applyQuaternion(this.localShip.quaternion);
+    
+    const bullet = this.bulletPool.shoot(
+        this.localShip.position.clone(),
+        direction,
+        this.networkManager?.socket?.id || 'local'
+    );
+    
+    if (bullet) {
+        bullet.ownerId = this.networkManager?.socket?.id || 'local';
+        bullet.mesh.material.color.setHex(0xff00ff);
+        bullet.mesh.material.emissive.setHex(0xff00ff);
+        bullet.mesh.material.emissiveIntensity = 1.0;
+        bullet.mesh.scale.set(2, 2, 2);
+        
+        const lazerSpeed = 120;
+        bullet.speed = lazerSpeed;
+        bullet.damage = this.shipDamage || 99999;
+    }
+    
+    if (this.networkManager && this.networkManager.socket) {
+        this.networkManager.sendShoot(this.localShip.position, direction);
+    }
+    
+    this.updateHUD();
+}
     // ========== ЭФФЕКТ ВЗРЫВА ==========
     createExplosion(position) {
         const particleCount = 50;
@@ -416,7 +582,6 @@ class Game {
             if (this.localShipNameLabel) this.localShipNameLabel.visible = false;
         }
         
-        // НЕ ОБНУЛЯЕМ КЛАВИШИ! Только блокируем управление через isDead
         this.updateHUD();
     }
 
@@ -428,23 +593,24 @@ class Game {
         document.getElementById('death-message').style.display = 'none';
         
         if (this.localShip) {
-            // Принудительно устанавливаем позицию и поворот
             this.localShip.position.copy(position);
             this.localShip.rotation.set(rotation.x, rotation.y, rotation.z);
+            if (this.shipRotationOffset !== 0) {
+                this.localShip.rotation.y += this.shipRotationOffset;
+            }
             this.localShip.visible = true;
             if (this.localShipNameLabel) this.localShipNameLabel.visible = true;
             
-            // Принудительно обновляем камеру
             if (this.cameraManager) {
                 this.cameraManager.update(this.localShip, 0.016);
             }
         }
         
         this.updateHUD();
-        console.log('♻️ Возрождение! Поворот доступен!');
+        console.log('♻️ Возрождение!');
     }
 
-    // ========== ОБНОВЛЕНИЕ ТАЙМЕРА ВОЗРОЖДЕНИЯ ==========
+    // ========== ОБНОВЛЕНИЕ ТАЙМЕРА ==========
     updateRespawnTimer(deltaTime) {
         if (!this.isDead) return;
         
@@ -499,9 +665,8 @@ class Game {
         return sprite;
     }
 
-    // ========== УПРАВЛЕНИЕ (КЛАВИШИ ВСЕГДА ЗАПОМИНАЮТСЯ) ==========
+    // ========== УПРАВЛЕНИЕ ==========
     setupControls() {
-        // Клавиши запоминаются ВСЕГДА, даже если игрок мёртв
         window.addEventListener('keydown', (e) => {
             if (e.code === 'KeyW') this.keys.w = true;
             if (e.code === 'KeyA') this.keys.a = true;
@@ -537,8 +702,10 @@ class Game {
         });
     }
 
-    // ========== СТРЕЛЬБА ==========
+    // ========== СТРЕЛЬБА (ОБЫЧНАЯ) ==========
     shoot() {
+        if (this.isLazer) return; // Лазер использует отдельную логику
+        
         if (!this.isGameActive || !this.localShip || !this.bulletPool || this.isDead) return;
         
         if (this.isOverheated) {
@@ -552,7 +719,7 @@ class Game {
         }
         this.lastShootTime = now;
 
-        this.overheat = Math.min(this.overheatMax, this.overheat + 8);
+        this.overheat = Math.min(this.overheatMax, this.overheat + this.overheatRate);
         
         if (this.overheat >= this.overheatMax) {
             this.isOverheated = true;
@@ -570,6 +737,7 @@ class Game {
         
         if (bullet) {
             bullet.ownerId = this.networkManager?.socket?.id || 'local';
+            bullet.damage = this.shipDamage;
         }
         
         if (this.networkManager && this.networkManager.socket) {
@@ -599,11 +767,16 @@ class Game {
 
         document.getElementById('score-text').textContent = this.score;
         document.getElementById('asteroids-destroyed').textContent = this.asteroidsDestroyed;
+        
+        // Отображение типа оружия
+        const weaponText = this.isLazer ? '🔫 ЛАЗЕР (зарядка 1с)' : '🔫 ПУШКА';
+        document.getElementById('weapon-type').textContent = weaponText;
     }
 
     addScore(points) {
         this.score += points;
         this.updateHUD();
+        console.log('➕ Очки добавлены:', points, 'Всего:', this.score);
     }
 
     takeDamage(damage) {
@@ -626,7 +799,7 @@ class Game {
         if (this.remotePlayers.has(playerData.id)) return;
 
         const remoteLoader = new ModelLoader(this.sceneManager.getScene());
-        new Ship(remoteLoader, playerData.modelIndex || 0);
+        new Ship(remoteLoader, playerData.currentModel || 0);
 
         const checkInterval = setInterval(() => {
             if (remoteLoader.model) {
@@ -657,96 +830,102 @@ class Game {
 
     // ========== ОБНОВЛЕНИЕ КОРАБЛЯ ==========
     updateLocalShip(deltaTime) {
-        this.updateRespawnTimer(deltaTime);
-        
-        if (!this.localShip) return;
-        
-        // ===== ДВИЖЕНИЕ (ТОЛЬКО ЕСЛИ ЖИВ) =====
-        if (!this.isDead) {
-            const moveSpeed = 5;
-            const rotSpeed = 2;
-            const verticalSpeed = 3;
+    this.updateRespawnTimer(deltaTime);
+    
+    if (!this.localShip) return;
+    
+    if (!this.isDead) {
+        const moveSpeed = this.shipSpeed;
+        const rotSpeed = this.shipRotSpeed;
+        const verticalSpeed = 3;
 
-            // ПОВОРОТ (A/D) — теперь точно работает
-            if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
-            if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
+        // ===== ПОВОРОТ (A/D) — без изменений =====
+        if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
+        if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
 
-            // ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S)
+        // ===== ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S) =====
+        if (this.isLazer) {
+            // === ДЛЯ LAZERSHIP: W и S ИНВЕРТИРОВАНЫ ===
+            if (this.keys.w) this.localShip.translateZ(-moveSpeed * deltaTime);  // было translateZ(moveSpeed)
+            if (this.keys.s) this.localShip.translateZ(moveSpeed * deltaTime);   // было translateZ(-moveSpeed)
+        } else {
+            // === ДЛЯ ОСТАЛЬНЫХ КОРАБЛЕЙ ===
             if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
             if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
-
-            // ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT)
-            if (this.keys.space) {
-                this.localShip.position.y += verticalSpeed * deltaTime;
-            }
-            if (this.keys.shift) {
-                this.localShip.position.y -= verticalSpeed * deltaTime;
-            }
-
-            if (this.networkManager) {
-                this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
-            }
-
-            if (this.cameraManager) {
-                this.cameraManager.update(this.localShip, deltaTime);
-            }
-        } else {
-            // Если мёртв — просто обновляем камеру (чтобы она не слетала)
-            if (this.cameraManager && this.localShip) {
-                this.cameraManager.update(this.localShip, deltaTime);
-            }
         }
 
-        // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА (РАБОТАЕТ ВСЕГДА) =====
-        if (this.overheat > 0) {
-            this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
-            if (this.overheat <= 0 && this.isOverheated) {
-                this.isOverheated = false;
-                this.overheat = 0;
-                console.log('✅ Пушка остыла!');
-            }
+        // ===== ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT) =====
+        if (this.keys.space) {
+            this.localShip.position.y += verticalSpeed * deltaTime;
+        }
+        if (this.keys.shift) {
+            this.localShip.position.y -= verticalSpeed * deltaTime;
         }
 
-        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ (РАБОТАЕТ ВСЕГДА) =====
-        if (this.bulletPool && this.networkManager) {
-            const activeBullets = this.bulletPool.getActiveBullets();
+        if (this.networkManager) {
+            this.networkManager.sendPosition(this.localShip.position, this.localShip.rotation);
+        }
+
+        if (this.cameraManager) {
+            this.cameraManager.update(this.localShip, deltaTime);
+        }
+    } else {
+        if (this.cameraManager && this.localShip) {
+            this.cameraManager.update(this.localShip, deltaTime);
+        }
+    }
+
+    // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА =====
+    if (this.overheat > 0) {
+        this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
+        if (this.overheat <= 0 && this.isOverheated) {
+            this.isOverheated = false;
+            this.overheat = 0;
+            console.log('✅ Пушка остыла!');
+        }
+    }
+
+    // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ =====
+    if (this.bulletPool && this.networkManager) {
+        const activeBullets = this.bulletPool.getActiveBullets();
+        
+        for (let i = activeBullets.length - 1; i >= 0; i--) {
+            const bullet = activeBullets[i];
+            const bulletPos = bullet.mesh.position;
+            const ownerId = bullet.ownerId;
+            const damage = bullet.damage || this.shipDamage || 20;
             
-            for (let i = activeBullets.length - 1; i >= 0; i--) {
-                const bullet = activeBullets[i];
-                const bulletPos = bullet.mesh.position;
-                const ownerId = bullet.ownerId;
+            for (const [playerId, remote] of this.remotePlayers) {
+                if (playerId === ownerId) continue;
+                if (remote.isDead) continue;
                 
-                for (const [playerId, remote] of this.remotePlayers) {
-                    if (playerId === ownerId) continue;
-                    if (remote.isDead) continue;
-                    
-                    const dist = bulletPos.distanceTo(remote.model.position);
-                    if (dist < 2.5) {
-                        if (this.networkManager.socket) {
-                            this.networkManager.socket.emit('hitPlayer', playerId, 20);
-                            this.bulletPool.deactivateBullet(bullet);
-                            activeBullets.splice(i, 1);
-                            this.createExplosion(remote.model.position);
-                        }
-                        break;
+                const dist = bulletPos.distanceTo(remote.model.position);
+                if (dist < 2.5) {
+                    if (this.networkManager.socket) {
+                        this.networkManager.socket.emit('hitPlayer', playerId, damage);
+                        this.bulletPool.deactivateBullet(bullet);
+                        activeBullets.splice(i, 1);
+                        this.createExplosion(remote.model.position);
                     }
+                    break;
                 }
             }
         }
-
-        if (this.bulletPool) {
-            this.bulletPool.update(deltaTime);
-            if (this.asteroidManager) {
-                this.asteroidManager.checkBulletCollisions(this.bulletPool.getActiveBullets());
-            }
-        }
-
-        if (this.asteroidManager) {
-            document.getElementById('asteroids-total').textContent = this.asteroidManager.asteroids.length;
-        }
-
-        this.updateHUD();
     }
+
+    if (this.bulletPool) {
+        this.bulletPool.update(deltaTime);
+        if (this.asteroidManager) {
+            this.asteroidManager.checkBulletCollisions(this.bulletPool.getActiveBullets());
+        }
+    }
+
+    if (this.asteroidManager) {
+        document.getElementById('asteroids-total').textContent = this.asteroidManager.asteroids.length;
+    }
+
+    this.updateHUD();
+}
 
     // ========== ЦИКЛ ==========
     onWindowResize() {

@@ -75,7 +75,7 @@ io.on('connection', (socket) => {
     console.log('🔌 Игрок подключился:', socket.id);
 
     socket.on('join', (sessionId, playerName, currentModel) => {
-        console.log(`📥 Присоединение к сессии ${sessionId}, игрок ${playerName}`);
+        console.log(`📥 Присоединение к сессии ${sessionId}, игрок ${playerName}, модель ${currentModel}`);
         
         if (!sessions.has(sessionId)) {
             sessions.set(sessionId, new Map());
@@ -135,7 +135,6 @@ io.on('connection', (socket) => {
         });
     });
     
-    // ===== ВЫСТРЕЛ =====
     socket.on('shoot', (data) => {
         const playerData = playerDataMap.get(socket.id);
         if (!playerData || playerData.isDead) return;
@@ -150,7 +149,6 @@ io.on('connection', (socket) => {
         });
     });
     
-    // ===== ПОПАДАНИЕ В ИГРОКА =====
     socket.on('hitPlayer', (targetId, damage) => {
         const attacker = playerDataMap.get(socket.id);
         if (!attacker || attacker.isDead) return;
@@ -165,7 +163,6 @@ io.on('connection', (socket) => {
         
         const sessionId = attacker.sessionId;
         
-        // Уведомляем всех в сессии
         io.to(sessionId).emit('playerHpUpdate', {
             id: targetId,
             hp: target.hp,
@@ -184,7 +181,6 @@ io.on('connection', (socket) => {
             });
             console.log(`💀 ${target.name} уничтожен ${attacker.name}!`);
             
-            // Возрождаем через 3 секунды
             setTimeout(() => {
                 target.hp = target.maxHp;
                 target.isDead = false;

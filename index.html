@@ -34,8 +34,8 @@
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 20px;
             padding: 40px;
-            width: 420px;
-            max-width: 90%;
+            width: 460px;
+            max-width: 95%;
             color: white;
             box-shadow: 0 0 60px rgba(0, 100, 255, 0.1);
         }
@@ -62,6 +62,48 @@
         }
         .lobby-card .form-control::placeholder {
             color: rgba(255,255,255,0.3);
+        }
+
+        /* ===== ВЫБОР КОРАБЛЯ ===== */
+        .ship-selection {
+            display: flex;
+            gap: 8px;
+            margin: 10px 0;
+            flex-wrap: wrap;
+        }
+        .ship-option {
+            flex: 1;
+            min-width: 70px;
+            padding: 8px 4px;
+            text-align: center;
+            background: rgba(255,255,255,0.03);
+            border: 2px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ship-option:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.2);
+        }
+        .ship-option.active {
+            border-color: #4a9eff;
+            background: rgba(74, 158, 255, 0.15);
+            box-shadow: 0 0 20px rgba(74, 158, 255, 0.15);
+        }
+        .ship-option .ship-icon {
+            font-size: 24px;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .ship-option .ship-name {
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .ship-option .ship-stat {
+            font-size: 9px;
+            opacity: 0.5;
+            display: block;
         }
 
         .session-list {
@@ -143,16 +185,6 @@
         }
         .btn-secondary:hover {
             background: rgba(255,255,255,0.1);
-            color: white;
-        }
-
-        .btn-outline-info {
-            border-color: rgba(255,255,255,0.15);
-            color: rgba(255,255,255,0.6);
-        }
-        .btn-outline-info:hover {
-            background: rgba(255,255,255,0.05);
-            border-color: rgba(255,255,255,0.3);
             color: white;
         }
 
@@ -272,11 +304,6 @@
             font-weight: 700;
         }
 
-        .hud-value-small {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
         #game-container {
             position: absolute;
             top: 0;
@@ -321,6 +348,19 @@
                 padding: 24px;
                 width: 95%;
             }
+            .ship-selection {
+                flex-wrap: wrap;
+            }
+            .ship-option {
+                min-width: 60px;
+                padding: 6px 2px;
+            }
+            .ship-option .ship-icon {
+                font-size: 20px;
+            }
+            .ship-option .ship-name {
+                font-size: 10px;
+            }
             .hud-item {
                 padding: 5px 12px;
                 min-width: 100px;
@@ -352,13 +392,26 @@
                 <input type="text" class="form-control" id="playerName" placeholder="Введите имя...">
             </div>
             
-            <!-- ===== ВЫБОР КОРАБЛЯ (ЗАГЛУШКА) ===== -->
+            <!-- ===== ВЫБОР КОРАБЛЯ (ТРИ КОРАБЛЯ) ===== -->
             <div class="mb-3">
                 <label class="form-label">Выбор корабля</label>
-                <button class="btn btn-outline-info w-100" id="selectShipBtn" disabled>
-                    🚀 Корабли (скоро будут)
-                </button>
-                <small class="text-muted" style="font-size: 12px; opacity: 0.5;">Выбор кораблей будет доступен позже</small>
+                <div class="ship-selection" id="shipSelection">
+                    <div class="ship-option active" data-ship="0">
+                        <span class="ship-icon">🚀</span>
+                        <span class="ship-name">Scout</span>
+                        <span class="ship-stat">⚡ Быстрый</span>
+                    </div>
+                    <div class="ship-option" data-ship="1">
+                        <span class="ship-icon">🛡️</span>
+                        <span class="ship-name">Assault</span>
+                        <span class="ship-stat">💪 Бронированный</span>
+                    </div>
+                    <div class="ship-option" data-ship="2">
+                        <span class="ship-icon">⚡</span>
+                        <span class="ship-name">LazerShip</span>
+                        <span class="ship-stat">🔫 Лазер с зарядкой</span>
+                    </div>
+                </div>
             </div>
             
             <div class="mb-3">
@@ -398,6 +451,10 @@
                 <span class="hud-icon">🔫</span>
                 <span class="hud-value" id="overheat-text">0%</span>
                 <div class="hud-bar"><div id="overheat-bar" style="width: 0%;"></div></div>
+            </div>
+            <div class="hud-item hud-compact" id="weapon-type">
+                <span class="hud-icon">🎯</span>
+                <span class="hud-value" id="weapon-text" style="font-size: 14px;">ПУШКА</span>
             </div>
         </div>
 
@@ -440,6 +497,30 @@
                 const randomName = `Player_${Math.floor(Math.random() * 1000)}`;
                 input.value = randomName;
                 localStorage.setItem('playerName', randomName);
+            }
+            
+            // ===== ВЫБОР КОРАБЛЯ =====
+            const shipOptions = document.querySelectorAll('.ship-option');
+            shipOptions.forEach(opt => {
+                opt.addEventListener('click', () => {
+                    shipOptions.forEach(o => o.classList.remove('active'));
+                    opt.classList.add('active');
+                    localStorage.setItem('selectedShip', opt.dataset.ship);
+                    console.log('✅ Выбран корабль:', opt.dataset.ship, opt.querySelector('.ship-name').textContent);
+                });
+            });
+            
+            // Загружаем сохранённый выбор
+            const savedShip = localStorage.getItem('selectedShip');
+            if (savedShip) {
+                shipOptions.forEach(opt => {
+                    if (opt.dataset.ship === savedShip) {
+                        opt.classList.add('active');
+                    } else {
+                        opt.classList.remove('active');
+                    }
+                });
+                console.log('📦 Загружен сохранённый корабль:', savedShip);
             }
         });
     </script>

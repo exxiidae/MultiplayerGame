@@ -17,8 +17,7 @@ export class AsteroidManager {
         this.asteroidSpeed = 0.004;
         this.asteroidRotSpeed = 0.0004;
 
-        // ===== ОПТИМИЗАЦИЯ: ОБЩАЯ ГЕОМЕТРИЯ =====
-        AsteroidManager.sharedGeometry = new THREE.SphereGeometry(1, 16, 16); // Меньше полигонов
+        AsteroidManager.sharedGeometry = new THREE.SphereGeometry(1, 16, 16);
         AsteroidManager.sharedMaterial = null;
 
         this.startSpawning();
@@ -34,13 +33,12 @@ export class AsteroidManager {
         }, this.spawnInterval);
     }
 
-    // ===== ОПТИМИЗАЦИЯ: СПАВН С РАЗБИВКОЙ ПО КАДРАМ =====
     spawnAsteroids() {
         const count = Math.floor(Math.random() * (this.spawnCountMax - this.spawnCountMin + 1)) + this.spawnCountMin;
         let spawned = 0;
 
         const spawnBatch = () => {
-            const batchSize = 3; // по 3 астероида за кадр
+            const batchSize = 3;
             for (let i = 0; i < batchSize && spawned < count; i++) {
                 const shipPosition = this.getPosition();
                 const angle = Math.random() * Math.PI * 2;
@@ -72,7 +70,6 @@ export class AsteroidManager {
         return this.ship ? this.ship.position : new THREE.Vector3(0, 0, 0);
     }
 
-    // ===== ОПТИМИЗАЦИЯ: ПЕРЕИСПОЛЬЗОВАНИЕ ГЕОМЕТРИИ =====
     getAsteroidMaterial() {
         if (!AsteroidManager.sharedMaterial) {
             const materialManager = new MaterialManager();
@@ -103,7 +100,7 @@ export class AsteroidManager {
             
             for (let j = bullets.length - 1; j >= 0; j--) {
                 const bullet = bullets[j];
-                const bulletPos = bullet.mesh.position; // Для BulletPool
+                const bulletPos = bullet.mesh.position;
                 
                 const dist = asteroidPos.distanceTo(bulletPos);
                 const asteroidRadius = asteroid.scale.x * 0.8;
@@ -112,19 +109,27 @@ export class AsteroidManager {
                     this.scene.remove(asteroid);
                     this.asteroids.splice(i, 1);
                     
-                    // Для BulletPool
-                    if (bullet.deactivate) {
+                    // ===== ИСПРАВЛЕНИЕ: ПРОВЕРЯЕМ, ЧТО У ПУЛИ ЕСТЬ =====
+                    if (bullet && typeof bullet.deactivate === 'function') {
+                        // Если это BulletPool
                         bullet.deactivate();
-                    } else {
+                    } else if (bullet && typeof bullet.destroy === 'function') {
+                        // Если это обычная пуля
                         bullet.destroy();
+                    } else if (bullet && bullet.mesh) {
+                        // Если ничего не подошло — просто удаляем из сцены
+                        this.scene.remove(bullet.mesh);
                     }
                     bullets.splice(j, 1);
                     
                     asteroidsDestroyed++;
                     
-                    if (window.game && window.game.isGameActive) {
+                    if (window.game && typeof window.game.addScore === 'function') {
                         window.game.addScore(10);
                         window.game.asteroidsDestroyed += 1;
+                        console.log('💥 +10 очков! Всего:', window.game.score);
+                    } else {
+                        console.warn('⚠️ window.game не найден или метод addScore отсутствует');
                     }
                     
                     break;
@@ -180,3 +185,10 @@ export class AsteroidManager {
         }
     }
 }
+
+
+
+
+
+
+
