@@ -262,10 +262,28 @@ class Game {
         this.loadPlayerStats(playerName).then(stats => {
             if (stats) {
                 console.log(`🏆 ${playerName}: Очки: ${stats.score}, Убийств: ${stats.kills}`);
+                // Обновляем HUD в лобби (если нужно)
+                this.updateLobbyStats(stats);
             }
         });
 
         this.init();
+    }
+
+    // ===== ОБНОВЛЕНИЕ СТАТИСТИКИ В ЛОББИ =====
+    updateLobbyStats(stats) {
+        const statsContainer = document.getElementById('stats-container');
+        const playerStatsDiv = document.getElementById('player-stats');
+        if (statsContainer && playerStatsDiv) {
+            statsContainer.style.display = 'block';
+            playerStatsDiv.innerHTML = `
+                <div class="stat-row"><span class="stat-label">⭐ Очки</span><span class="stat-value">${stats.score || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">💀 Убийств</span><span class="stat-value">${stats.kills || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">🏆 Побед</span><span class="stat-value">${stats.wins || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">☄️ Астероидов</span><span class="stat-value">${stats.asteroids_destroyed || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">🎮 Игр сыграно</span><span class="stat-value">${stats.total_games || 0}</span></div>
+            `;
+        }
     }
 
     leaveGame() {
@@ -397,6 +415,13 @@ class Game {
             
             if (data.id === this.networkManager.socket?.id) {
                 this.handleDeath(data.killerName);
+            } else {
+                // Если убит другой игрок — обновляем счётчик убийств
+                if (data.killerId === this.networkManager.socket?.id) {
+                    this.kills += 1;
+                    this.updateHUD();
+                    console.log(`💀 Убийство! Всего убийств: ${this.kills}`);
+                }
             }
         };
         
@@ -923,6 +948,7 @@ class Game {
             }
         }
 
+        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ (ТОЛЬКО УРОН, БЕЗ УБИЙСТВ) =====
         if (this.bulletPool && this.networkManager) {
             const activeBullets = this.bulletPool.getActiveBullets();
             
@@ -939,20 +965,13 @@ class Game {
                     const dist = bulletPos.distanceTo(remote.model.position);
                     if (dist < 2.5) {
                         if (this.networkManager.socket) {
+                            // Отправляем урон на сервер (сервер сам решит, убийство это или нет)
                             this.networkManager.socket.emit('hitPlayer', playerId, damage);
                             this.bulletPool.deactivateBullet(bullet);
                             activeBullets.splice(i, 1);
                             this.createExplosion(remote.model.position);
                             
-                            // Увеличиваем счётчик убийств
-                            this.kills += 1;
-                            this.updateHUD();
-                            
-                            // Отправляем обновление статистики на сервер
-                            this.networkManager.socket.emit('updateStats', {
-                                kills: 1,
-                                score: 10
-                            });
+                            console.log(`💥 Попадание в ${remote.name}`);
                         }
                         break;
                     }
