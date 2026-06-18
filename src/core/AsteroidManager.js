@@ -109,27 +109,31 @@ export class AsteroidManager {
                     this.scene.remove(asteroid);
                     this.asteroids.splice(i, 1);
                     
-                    // ===== ИСПРАВЛЕНИЕ: ПРОВЕРЯЕМ, ЧТО У ПУЛИ ЕСТЬ =====
-                    if (bullet && typeof bullet.deactivate === 'function') {
-                        // Если это BulletPool
+                    if (bullet.deactivate) {
                         bullet.deactivate();
-                    } else if (bullet && typeof bullet.destroy === 'function') {
-                        // Если это обычная пуля
+                    } else if (bullet.destroy) {
                         bullet.destroy();
-                    } else if (bullet && bullet.mesh) {
-                        // Если ничего не подошло — просто удаляем из сцены
+                    } else if (bullet.mesh) {
                         this.scene.remove(bullet.mesh);
                     }
                     bullets.splice(j, 1);
                     
                     asteroidsDestroyed++;
                     
+                    // ===== ОТПРАВКА СТАТИСТИКИ =====
                     if (window.game && typeof window.game.addScore === 'function') {
                         window.game.addScore(10);
                         window.game.asteroidsDestroyed += 1;
                         console.log('💥 +10 очков! Всего:', window.game.score);
-                    } else {
-                        console.warn('⚠️ window.game не найден или метод addScore отсутствует');
+                        
+                        // Отправляем на сервер через Socket.IO
+                        if (window.game.networkManager && window.game.networkManager.socket) {
+                            window.game.networkManager.socket.emit('updateStats', {
+                                asteroids_destroyed: 1,
+                                score: 10
+                            });
+                            console.log('📤 Статистика отправлена на сервер');
+                        }
                     }
                     
                     break;
@@ -185,10 +189,3 @@ export class AsteroidManager {
         }
     }
 }
-
-
-
-
-
-
-

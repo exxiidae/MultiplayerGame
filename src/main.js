@@ -85,6 +85,8 @@ class Game {
         this.overheatRate = 8;
         this.score = 0;
         this.asteroidsDestroyed = 0;
+        this.kills = 0;
+        this.deaths = 0;
         this.isDead = false;
         this.respawnTimer = 0;
         this.shipSpeed = 5;
@@ -250,6 +252,8 @@ class Game {
         this.overheat = 0;
         this.score = 0;
         this.asteroidsDestroyed = 0;
+        this.kills = 0;
+        this.deaths = 0;
         this.isOverheated = false;
         this.isDead = false;
         this.respawnTimer = 0;
@@ -463,6 +467,11 @@ class Game {
             }
         });
 
+        // Отключаем контекстное меню (ПКМ)
+        this.renderer.domElement.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
         this.setupControls();
         window.addEventListener('resize', () => this.onWindowResize());
         this.animate();
@@ -601,6 +610,13 @@ class Game {
         if (this.localShip) {
             this.localShip.visible = false;
             if (this.localShipNameLabel) this.localShipNameLabel.visible = false;
+        }
+        
+        // Отправляем смерть на сервер
+        if (this.networkManager && this.networkManager.socket) {
+            this.networkManager.socket.emit('updateStats', {
+                deaths: 1
+            });
         }
         
         this.updateHUD();
@@ -788,6 +804,7 @@ class Game {
 
         document.getElementById('score-text').textContent = this.score;
         document.getElementById('asteroids-destroyed').textContent = this.asteroidsDestroyed;
+        document.getElementById('kills-text').textContent = this.kills || 0;
         
         const weaponText = this.isLazer ? '🔫 ЛАЗЕР (зарядка 1с)' : '🔫 ПУШКА';
         document.getElementById('weapon-text').textContent = weaponText;
@@ -798,7 +815,6 @@ class Game {
         this.updateHUD();
         console.log('➕ Очки добавлены:', points, 'Всего:', this.score);
         
-        // Отправляем обновление статистики на сервер
         if (this.networkManager && this.networkManager.socket) {
             this.networkManager.socket.emit('updateStats', {
                 score: points,
@@ -811,12 +827,12 @@ class Game {
         if (this.isDead) return;
         this.hp = Math.max(0, this.hp - damage);
         this.updateHUD();
+        
         if (this.hp <= 0) {
             console.log('💀 Корабль уничтожен!');
             if (this.networkManager && this.networkManager.socket) {
-                this.networkManager.socket.emit('playerDied', {
-                    id: this.networkManager.socket.id,
-                    killerId: 'unknown'
+                this.networkManager.socket.emit('updateStats', {
+                    deaths: 1
                 });
             }
         }
@@ -867,22 +883,17 @@ class Game {
             const rotSpeed = this.shipRotSpeed;
             const verticalSpeed = 3;
 
-            // ===== ПОВОРОТ (A/D) =====
             if (this.keys.a) this.localShip.rotation.y += rotSpeed * deltaTime;
             if (this.keys.d) this.localShip.rotation.y -= rotSpeed * deltaTime;
 
-            // ===== ДВИЖЕНИЕ ВПЕРЁД/НАЗАД (W/S) =====
             if (this.isLazer) {
-                // ДЛЯ LAZERSHIP: W и S ИНВЕРТИРОВАНЫ
                 if (this.keys.w) this.localShip.translateZ(-moveSpeed * deltaTime);
                 if (this.keys.s) this.localShip.translateZ(moveSpeed * deltaTime);
             } else {
-                // ДЛЯ ОСТАЛЬНЫХ КОРАБЛЕЙ
                 if (this.keys.w) this.localShip.translateZ(moveSpeed * deltaTime);
                 if (this.keys.s) this.localShip.translateZ(-moveSpeed * deltaTime);
             }
 
-            // ===== ДВИЖЕНИЕ ВВЕРХ/ВНИЗ (ПРОБЕЛ / SHIFT) =====
             if (this.keys.space) {
                 this.localShip.position.y += verticalSpeed * deltaTime;
             }
@@ -903,7 +914,6 @@ class Game {
             }
         }
 
-        // ===== ОСТЫВАНИЕ ПЕРЕГРЕВА =====
         if (this.overheat > 0) {
             this.overheat = Math.max(0, this.overheat - this.overheatCooldownRate * deltaTime);
             if (this.overheat <= 0 && this.isOverheated) {
@@ -913,7 +923,6 @@ class Game {
             }
         }
 
-        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ =====
         if (this.bulletPool && this.networkManager) {
             const activeBullets = this.bulletPool.getActiveBullets();
             
@@ -935,7 +944,11 @@ class Game {
                             activeBullets.splice(i, 1);
                             this.createExplosion(remote.model.position);
                             
-                            // Отправляем обновление статистики (убийство)
+                            // Увеличиваем счётчик убийств
+                            this.kills += 1;
+                            this.updateHUD();
+                            
+                            // Отправляем обновление статистики на сервер
                             this.networkManager.socket.emit('updateStats', {
                                 kills: 1,
                                 score: 10
