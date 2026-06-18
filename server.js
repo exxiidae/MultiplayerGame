@@ -5,14 +5,14 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import pkg from 'pg';
 import dotenv from 'dotenv';
-dotenv.config();
-console.log('DB URL:', process.env.DATABASE_URL);
+
 const { Pool } = pkg;
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// ========== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ ==========
+// ========== ПОДКЛЮЧЕНИЕ К БАЗЕ ==========
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://localhost/game_db',
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
@@ -195,7 +195,6 @@ const sessions = new Map();
 const sessionMetadata = new Map();
 const playerDataMap = new Map();
 
-// ===== API: СПИСОК СЕССИЙ =====
 fastify.get('/api/sessions', async (_, reply) => {
     const sessionList = [];
     for (const [sessionId, players] of sessions) {
@@ -209,7 +208,6 @@ fastify.get('/api/sessions', async (_, reply) => {
     return reply.send(sessionList);
 });
 
-// ===== API: СОЗДАНИЕ СЕССИИ =====
 fastify.post('/api/create-session', async (request, reply) => {
     const { playerName } = request.body;
     const sessionId = `game_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -218,7 +216,6 @@ fastify.post('/api/create-session', async (request, reply) => {
     return reply.send({ sessionId });
 });
 
-// ===== API: ТАБЛИЦА ЛИДЕРОВ =====
 fastify.get('/api/leaderboard', async (_, reply) => {
     try {
         const leaderboard = await getLeaderboard(10);
@@ -229,7 +226,6 @@ fastify.get('/api/leaderboard', async (_, reply) => {
     }
 });
 
-// ===== API: СТАТИСТИКА ИГРОКА ПО SOCKET ID =====
 fastify.get('/api/player/:socketId', async (request, reply) => {
     try {
         const { socketId } = request.params;
@@ -244,7 +240,6 @@ fastify.get('/api/player/:socketId', async (request, reply) => {
     }
 });
 
-// ===== API: СТАТИСТИКА ИГРОКА ПО НИКУ =====
 fastify.get('/api/player/name/:username', async (request, reply) => {
     try {
         const { username } = request.params;
@@ -309,91 +304,97 @@ io.on('connection', (socket) => {
     console.log('🔌 Игрок подключился:', socket.id);
 
     socket.on('join', async (sessionId, playerName, currentModel) => {
-    console.log(`📥 Присоединение к сессии ${sessionId}, игрок ${playerName}, модель ${currentModel}`);
-    
-    // 1. Сохраняем игрока в БД
-    try {
-        await savePlayer(socket.id, playerName, currentModel);
-        console.log(`✅ Игрок ${playerName} сохранён в БД`);
-    } catch (err) {
-        console.error('❌ Ошибка сохранения игрока:', err);
-    }
-    
-    // 2. Проверяем, есть ли сессия в памяти
-    if (!sessions.has(sessionId)) {
-        sessions.set(sessionId, new Map());
-        sessionMetadata.set(sessionId, { created: Date.now() });
+        console.log(`📥 Присоединение к сессии ${sessionId}, игрок ${playerName}, модель ${currentModel}`);
         
-        // 3. СОЗДАЁМ СЕССИЮ В БАЗЕ ДО ТОГО, КАК ДОБАВЛЯТЬ ИГРОКА
         try {
-            await saveSession(sessionId, socket.id);
-            console.log(`✅ Сессия ${sessionId} создана в БД`);
+            await savePlayer(socket.id, playerName, currentModel);
+            console.log(`✅ Игрок ${playerName} сохранён в БД`);
         } catch (err) {
-            console.error('❌ Ошибка создания сессии:', err);
+            console.error('❌ Ошибка сохранения игрока:', err);
         }
-    }
-    
-    const session = sessions.get(sessionId);
-    const playerData = new PlayerData(socket.id, playerName, currentModel);
-    playerData.sessionId = sessionId;
-    
-    session.set(socket.id, playerData);
-    playerDataMap.set(socket.id, playerData);
-    
-    // 4. Загружаем статистику игрока
-    try {
-        const playerStats = await getPlayerBySocket(socket.id);
-        if (playerStats) {
-            socket.emit('playerStats', {
-                score: playerStats.score,
-                kills: playerStats.kills,
-                deaths: playerStats.deaths,
-                wins: playerStats.wins,
-                total_games: playerStats.total_games,
-                asteroids_destroyed: playerStats.asteroids_destroyed
-            });
+        
+        // ===== 1. ПРОВЕРЯЕМ, ЕСТЬ ЛИ СЕССИЯ В ПАМЯТИ =====
+        if (!sessions.has(sessionId)) {
+            sessions.set(sessionId, new Map());
+            sessionMetadata.set(sessionId, { created: Date.now() });
         }
-    } catch (err) {
-        console.error('❌ Ошибка загрузки статистики:', err);
-    }
-    
-    // 5. ДОБАВЛЯЕМ ИГРОКА В СЕССИЮ (теперь сессия точно существует)
-    try {
-        await addPlayerToSession(sessionId, socket.id);
-        console.log(`✅ Игрок ${playerName} добавлен в сессию ${sessionId}`);
-    } catch (err) {
-        console.error('❌ Ошибка добавления игрока в сессию:', err);
-    }
-    
-    // Остальной код (отправка другим игрокам, join комнаты)
-    const otherPlayers = Array.from(session.values())
-        .filter(p => p.id !== socket.id)
-        .map(p => ({
-            id: p.id,
-            name: p.name,
-            currentModel: p.currentModel,
-            position: p.position,
-            rotation: p.rotation,
-            hp: p.hp,
-            maxHp: p.maxHp,
-            isDead: p.isDead || false
-        }));
-    
-    socket.emit('init', otherPlayers);
-    socket.broadcast.to(sessionId).emit('playerJoined', {
-        id: playerData.id,
-        name: playerData.name,
-        currentModel: playerData.currentModel,
-        position: playerData.position,
-        rotation: playerData.rotation,
-        hp: playerData.hp,
-        maxHp: playerData.maxHp,
-        isDead: playerData.isDead
+        
+        // ===== 2. СОЗДАЁМ СЕССИЮ В БАЗЕ (ЕСЛИ ЕЁ НЕТ) =====
+        try {
+            // Проверяем, существует ли сессия в БД
+            const checkSession = await pool.query(
+                'SELECT 1 FROM game_sessions WHERE session_id = $1',
+                [sessionId]
+            );
+            if (checkSession.rows.length === 0) {
+                await saveSession(sessionId, socket.id);
+                console.log(`✅ Сессия ${sessionId} создана в БД`);
+            } else {
+                console.log(`✅ Сессия ${sessionId} уже существует в БД`);
+            }
+        } catch (err) {
+            console.error('❌ Ошибка проверки/создания сессии:', err);
+        }
+        
+        const session = sessions.get(sessionId);
+        const playerData = new PlayerData(socket.id, playerName, currentModel);
+        playerData.sessionId = sessionId;
+        
+        session.set(socket.id, playerData);
+        playerDataMap.set(socket.id, playerData);
+        
+        try {
+            const playerStats = await getPlayerBySocket(socket.id);
+            if (playerStats) {
+                socket.emit('playerStats', {
+                    score: playerStats.score,
+                    kills: playerStats.kills,
+                    deaths: playerStats.deaths,
+                    wins: playerStats.wins,
+                    total_games: playerStats.total_games,
+                    asteroids_destroyed: playerStats.asteroids_destroyed
+                });
+            }
+        } catch (err) {
+            console.error('❌ Ошибка загрузки статистики:', err);
+        }
+        
+        // ===== 3. ТЕПЕРЬ ДОБАВЛЯЕМ ИГРОКА В СЕССИЮ (СЕССИЯ ТОЧНО ЕСТЬ) =====
+        try {
+            await addPlayerToSession(sessionId, socket.id);
+            console.log(`✅ Игрок ${playerName} добавлен в сессию ${sessionId}`);
+        } catch (err) {
+            console.error('❌ Ошибка добавления игрока в сессию:', err);
+        }
+        
+        const otherPlayers = Array.from(session.values())
+            .filter(p => p.id !== socket.id)
+            .map(p => ({
+                id: p.id,
+                name: p.name,
+                currentModel: p.currentModel,
+                position: p.position,
+                rotation: p.rotation,
+                hp: p.hp,
+                maxHp: p.maxHp,
+                isDead: p.isDead || false
+            }));
+        
+        socket.emit('init', otherPlayers);
+        socket.broadcast.to(sessionId).emit('playerJoined', {
+            id: playerData.id,
+            name: playerData.name,
+            currentModel: playerData.currentModel,
+            position: playerData.position,
+            rotation: playerData.rotation,
+            hp: playerData.hp,
+            maxHp: playerData.maxHp,
+            isDead: playerData.isDead
+        });
+        
+        socket.join(sessionId);
+        console.log(`✅ Игрок ${playerName} присоединился. Всего в сессии: ${session.size}`);
     });
-    
-    socket.join(sessionId);
-    console.log(`✅ Игрок ${playerName} присоединился. Всего в сессии: ${session.size}`);
-});
     
     socket.on('move', (position, rotation) => {
         const playerData = playerDataMap.get(socket.id);
