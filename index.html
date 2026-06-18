@@ -222,9 +222,9 @@
         /* ===== КНОПКА НАЗАД ===== */
        .back-btn {
     position: absolute;
-    top: 20px;
+    top: 80px; /* ← БЫЛО 20px, СТАЛО 80px */
     left: 20px;
-    z-index: 999; /* ← БЫЛО 30, СТАЛО 999 */
+    z-index: 999;
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(255,255,255,0.08);
@@ -238,13 +238,12 @@
     display: none;
     letter-spacing: 0.3px;
 }
-        .back-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: white;
-            border-color: rgba(255,255,255,0.2);
-            transform: scale(1.02);
-        }
-
+.back-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-color: rgba(255,255,255,0.2);
+    transform: scale(1.02);
+}
         /* ===== HUD ===== */
         #hud {
             position: absolute;
