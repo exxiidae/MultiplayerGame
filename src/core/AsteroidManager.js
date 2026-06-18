@@ -120,13 +120,11 @@ export class AsteroidManager {
                     
                     asteroidsDestroyed++;
                     
-                    // ===== ОТПРАВКА СТАТИСТИКИ =====
                     if (window.game && typeof window.game.addScore === 'function') {
                         window.game.addScore(10);
                         window.game.asteroidsDestroyed += 1;
                         console.log('💥 +10 очков! Всего:', window.game.score);
                         
-                        // Отправляем на сервер через Socket.IO
                         if (window.game.networkManager && window.game.networkManager.socket) {
                             window.game.networkManager.socket.emit('updateStats', {
                                 asteroids_destroyed: 1,

@@ -126,14 +126,41 @@ class Game {
             if (response.ok) {
                 const stats = await response.json();
                 console.log('📊 Статистика игрока:', stats);
+                this.updateLobbyStats(stats);
                 return stats;
             } else {
                 console.log('📊 Новый игрок, статистики пока нет');
+                this.updateLobbyStats(null);
                 return null;
             }
         } catch (err) {
             console.error('❌ Ошибка загрузки статистики:', err);
             return null;
+        }
+    }
+
+    // ===== ОБНОВЛЕНИЕ СТАТИСТИКИ В ЛОББИ =====
+    updateLobbyStats(stats) {
+        const statsContainer = document.getElementById('stats-container');
+        const playerStatsDiv = document.getElementById('player-stats');
+        
+        if (!statsContainer || !playerStatsDiv) {
+            console.warn('⚠️ Элементы статистики не найдены в DOM');
+            return;
+        }
+        
+        statsContainer.style.display = 'block';
+        
+        if (stats) {
+            playerStatsDiv.innerHTML = `
+                <div class="stat-row"><span class="stat-label">⭐ Очки</span><span class="stat-value">${stats.score || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">💀 Убийств</span><span class="stat-value">${stats.kills || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">🏆 Побед</span><span class="stat-value">${stats.wins || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">☄️ Астероидов</span><span class="stat-value">${stats.asteroids_destroyed || 0}</span></div>
+                <div class="stat-row"><span class="stat-label">🎮 Игр сыграно</span><span class="stat-value">${stats.total_games || 0}</span></div>
+            `;
+        } else {
+            playerStatsDiv.innerHTML = `<div class="loading-text">✨ Новый игрок! Добро пожаловать!</div>`;
         }
     }
 
@@ -258,32 +285,8 @@ class Game {
         this.isDead = false;
         this.respawnTimer = 0;
 
-        // Загружаем статистику игрока
-        this.loadPlayerStats(playerName).then(stats => {
-            if (stats) {
-                console.log(`🏆 ${playerName}: Очки: ${stats.score}, Убийств: ${stats.kills}`);
-                // Обновляем HUD в лобби (если нужно)
-                this.updateLobbyStats(stats);
-            }
-        });
-
+        this.loadPlayerStats(playerName);
         this.init();
-    }
-
-    // ===== ОБНОВЛЕНИЕ СТАТИСТИКИ В ЛОББИ =====
-    updateLobbyStats(stats) {
-        const statsContainer = document.getElementById('stats-container');
-        const playerStatsDiv = document.getElementById('player-stats');
-        if (statsContainer && playerStatsDiv) {
-            statsContainer.style.display = 'block';
-            playerStatsDiv.innerHTML = `
-                <div class="stat-row"><span class="stat-label">⭐ Очки</span><span class="stat-value">${stats.score || 0}</span></div>
-                <div class="stat-row"><span class="stat-label">💀 Убийств</span><span class="stat-value">${stats.kills || 0}</span></div>
-                <div class="stat-row"><span class="stat-label">🏆 Побед</span><span class="stat-value">${stats.wins || 0}</span></div>
-                <div class="stat-row"><span class="stat-label">☄️ Астероидов</span><span class="stat-value">${stats.asteroids_destroyed || 0}</span></div>
-                <div class="stat-row"><span class="stat-label">🎮 Игр сыграно</span><span class="stat-value">${stats.total_games || 0}</span></div>
-            `;
-        }
     }
 
     leaveGame() {
@@ -333,6 +336,12 @@ class Game {
         document.getElementById('backBtn').style.display = 'none';
         document.getElementById('hud').style.display = 'none';
         document.getElementById('death-message').style.display = 'none';
+        
+        const playerName = document.getElementById('playerName')?.value?.trim();
+        if (playerName) {
+            this.loadPlayerStats(playerName);
+        }
+        
         document.getElementById('refreshSessionsBtn').click();
     }
 
@@ -416,11 +425,17 @@ class Game {
             if (data.id === this.networkManager.socket?.id) {
                 this.handleDeath(data.killerName);
             } else {
-                // Если убит другой игрок — обновляем счётчик убийств
                 if (data.killerId === this.networkManager.socket?.id) {
                     this.kills += 1;
                     this.updateHUD();
                     console.log(`💀 Убийство! Всего убийств: ${this.kills}`);
+                    
+                    if (this.networkManager && this.networkManager.socket) {
+                        this.networkManager.socket.emit('updateStats', {
+                            kills: 1,
+                            score: 10
+                        });
+                    }
                 }
             }
         };
@@ -446,7 +461,6 @@ class Game {
 
         this.networkManager.connect(this.sessionId, this.playerName, this.selectedShip);
 
-        // ===== СОЗДАЁМ КОРАБЛЬ =====
         const stats = SHIP_STATS[this.selectedShip];
         this.ship = new Ship(this.modelLoader, this.selectedShip, stats.scale || 1);
         this.clock = new THREE.Clock();
@@ -477,7 +491,6 @@ class Game {
             console.log(`✅ Игра инициализирована! Корабль: ${SHIP_STATS[this.selectedShip].name}`);
         }, 500);
 
-        // ===== КЛИК МЫШИ ДЛЯ СТРЕЛЬБЫ =====
         this.renderer.domElement.addEventListener('mousedown', () => {
             if (this.isLazer) {
                 this.startLazerCharge();
@@ -492,7 +505,6 @@ class Game {
             }
         });
 
-        // Отключаем контекстное меню (ПКМ)
         this.renderer.domElement.addEventListener('contextmenu', (e) => {
             e.preventDefault();
         });
@@ -637,7 +649,6 @@ class Game {
             if (this.localShipNameLabel) this.localShipNameLabel.visible = false;
         }
         
-        // Отправляем смерть на сервер
         if (this.networkManager && this.networkManager.socket) {
             this.networkManager.socket.emit('updateStats', {
                 deaths: 1
@@ -764,7 +775,7 @@ class Game {
         });
     }
 
-    // ========== СТРЕЛЬБА (ОБЫЧНАЯ) ==========
+    // ========== СТРЕЛЬБА ==========
     shoot() {
         if (this.isLazer) return;
         
@@ -948,7 +959,7 @@ class Game {
             }
         }
 
-        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ (ТОЛЬКО УРОН, БЕЗ УБИЙСТВ) =====
+        // ===== ПРОВЕРКА ПОПАДАНИЙ ПУЛЬ =====
         if (this.bulletPool && this.networkManager) {
             const activeBullets = this.bulletPool.getActiveBullets();
             
@@ -965,7 +976,6 @@ class Game {
                     const dist = bulletPos.distanceTo(remote.model.position);
                     if (dist < 2.5) {
                         if (this.networkManager.socket) {
-                            // Отправляем урон на сервер (сервер сам решит, убийство это или нет)
                             this.networkManager.socket.emit('hitPlayer', playerId, damage);
                             this.bulletPool.deactivateBullet(bullet);
                             activeBullets.splice(i, 1);

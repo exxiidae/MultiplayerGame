@@ -220,24 +220,24 @@
         }
 
         /* ===== КНОПКА НАЗАД ===== */
-        .back-btn {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 30;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.7);
-            padding: 8px 18px;
-            border-radius: 30px;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: none;
-            letter-spacing: 0.3px;
-        }
+       .back-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 999; /* ← БЫЛО 30, СТАЛО 999 */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.7);
+    padding: 8px 18px;
+    border-radius: 30px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: none;
+    letter-spacing: 0.3px;
+}
         .back-btn:hover {
             background: rgba(255,255,255,0.1);
             color: white;
